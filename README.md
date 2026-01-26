@@ -9,7 +9,12 @@ A lightweight, type-safe duplex communication library based on postMessage API. 
 
 基于 postMessage API 的轻量级、类型安全的双工通讯库。支持 **iframe** 和 **Service Worker** 两种通讯场景。
 
-📖 **[在线文档 / Documentation](https://ljquan.github.io/postmessage-duplex/)**
+<p align="center">
+  <a href="https://ljquan.github.io/postmessage-duplex/"><strong>📖 在线文档 / Documentation</strong></a> ·
+  <a href="https://ljquan.github.io/postmessage-duplex/guide/getting-started.html"><strong>🚀 快速开始</strong></a> ·
+  <a href="https://ljquan.github.io/postmessage-duplex/playground/"><strong>🎮 在线演示</strong></a> ·
+  <a href="https://ljquan.github.io/postmessage-duplex/api/"><strong>📚 API 参考</strong></a>
+</p>
 
 ---
 
@@ -28,7 +33,7 @@ A lightweight, type-safe duplex communication library based on postMessage API. 
 
 - 🔄 **Duplex Communication** - 完整的双向消息传递，支持请求-响应模式
 - 🎯 **Type Safe** - TypeScript 编写，完整类型定义
-- 📦 **Lightweight** - 零依赖，gzip 后 ~3KB
+- 📦 **Lightweight** - 零依赖，gzip 后 ~8KB
 - ⏱️ **Timeout Handling** - 内置请求超时机制，默认 5 秒
 - 📋 **Message Queue** - 连接就绪前自动缓存消息
 - 🔌 **Multiple Scenarios** - 统一的 iframe 和 Service Worker 通讯接口
@@ -433,6 +438,20 @@ demo/
 ├── service-worker/    # SW 示例
 └── debugger/          # 调试工具
 ```
+
+## Documentation / 更多文档
+
+完整文档请访问：**https://ljquan.github.io/postmessage-duplex/**
+
+| 文档 | 链接 |
+|------|------|
+| 快速开始 | [Getting Started](https://ljquan.github.io/postmessage-duplex/guide/getting-started.html) |
+| Iframe 通讯指南 | [Iframe Communication](https://ljquan.github.io/postmessage-duplex/guide/iframe-communication.html) |
+| Service Worker 指南 | [Service Worker](https://ljquan.github.io/postmessage-duplex/guide/service-worker.html) |
+| TypeScript 支持 | [TypeScript](https://ljquan.github.io/postmessage-duplex/guide/typescript.html) |
+| 调试指南 | [Debugging](https://ljquan.github.io/postmessage-duplex/guide/debugging.html) |
+| API 参考 | [API Reference](https://ljquan.github.io/postmessage-duplex/api/) |
+| 在线演示 | [Playground](https://ljquan.github.io/postmessage-duplex/playground/) |
 
 ## Changelog / 更新日志
 
