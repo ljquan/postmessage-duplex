@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>父页面 - postmessage-duplex Playground</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #f5f7fa;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    
+    .panel {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .panel-title .badge {
+      background: #3eaf7c;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .row {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .col {
+      flex: 1;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    button:hover {
+      transform: translateY(-1px);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    .btn-primary {
+      background: #3eaf7c;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #359468;
+    }
+    
+    .btn-secondary {
+      background: #409eff;
+      color: white;
+    }
+    
+    .btn-secondary:hover {
+      background: #337ecc;
+    }
+    
+    .btn-warning {
+      background: #e6a23c;
+      color: white;
+    }
+    
+    .btn-warning:hover {
+      background: #cf9236;
+    }
+    
+    .btn-danger {
+      background: #f56c6c;
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      background: #dd6161;
+    }
+    
+    .log-container {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 15px;
+      height: 200px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+    }
+    
+    .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+    
+    .log-item:last-child {
+      border-bottom: none;
+    }
+    
+    .log-time {
+      color: #888;
+    }
+    
+    .log-send {
+      color: #67c23a;
+    }
+    
+    .log-receive {
+      color: #409eff;
+    }
+    
+    .log-error {
+      color: #f56c6c;
+    }
+    
+    .log-info {
+      color: #e6a23c;
+    }
+    
+    iframe {
+      width: 100%;
+      height: 300px;
+      border: 2px solid #e4e7ed;
+      border-radius: 6px;
+      background: white;
+    }
+    
+    .code-block {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 15px;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+      color: #d4d4d4;
+      line-height: 1.5;
+    }
+    
+    .code-block .keyword {
+      color: #569cd6;
+    }
+    
+    .code-block .string {
+      color: #ce9178;
+    }
+    
+    .code-block .function {
+      color: #dcdcaa;
+    }
+    
+    .code-block .comment {
+      color: #6a9955;
+    }
+    
+    .code-block .variable {
+      color: #9cdcfe;
+    }
+    
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-left: 10px;
+    }
+    
+    .status.ready {
+      background: #e1f3d8;
+      color: #67c23a;
+    }
+    
+    .status.disconnected {
+      background: #fde2e2;
+      color: #f56c6c;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    input[type="text"] {
+      flex: 1;
+      padding: 10px 15px;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    
+    input[type="text"]:focus {
+      border-color: #3eaf7c;
+    }
+    
+    @media (max-width: 768px) {
+      .row {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      🔄 postmessage-duplex Playground
+      <span class="status ready" id="status">
+        <span class="status-dot"></span>
+        已连接
+      </span>
+    </h1>
+    
+    <div class="row">
+      <div class="col">
+        <div class="panel">
+          <div class="panel-title">
+            <span>📤 发送消息</span>
+            <span class="badge">父页面</span>
+          </div>
+          
+          <div class="input-group">
+            <input type="text" id="messageInput" placeholder="输入要发送的消息..." value="Hello from parent!">
+          </div>
+          
+          <div class="controls">
+            <button class="btn-primary" onclick="sendMessage()">发送消息</button>
+            <button class="btn-secondary" onclick="sendWithResponse()">请求数据</button>
+            <button class="btn-warning" onclick="sendTimeout()">测试超时</button>
+            <button class="btn-danger" onclick="clearLog()">清空日志</button>
+          </div>
+        </div>
+        
+        <div class="panel">
+          <div class="panel-title">📋 消息日志</div>
+          <div class="log-container" id="logContainer"></div>
+        </div>
+      </div>
+      
+      <div class="col">
+        <div class="panel">
+          <div class="panel-title">
+            <span>📝 示例代码</span>
+            <span class="badge">父页面</span>
+          </div>
+          <div class="code-block">
+<span class="comment">// 创建通道</span>
+<span class="keyword">const</span> <span class="variable">channel</span> = <span class="keyword">new</span> <span class="function">IframeChannel</span>(iframe)
+
+<span class="comment">// 发送消息并等待响应</span>
+<span class="keyword">const</span> <span class="variable">response</span> = <span class="keyword">await</span> <span class="variable">channel</span>.<span class="function">publish</span>(
+  <span class="string">'greeting'</span>, 
+  { <span class="variable">message</span>: <span class="string">'Hello!'</span> }
+)
+console.<span class="function">log</span>(<span class="variable">response</span>.<span class="variable">data</span>)
+
+<span class="comment">// 监听子页面消息</span>
+<span class="variable">channel</span>.<span class="function">subscribe</span>(<span class="string">'notify'</span>, ({ <span class="variable">data</span> }) => {
+  console.<span class="function">log</span>(<span class="string">'收到:'</span>, <span class="variable">data</span>)
+  <span class="keyword">return</span> { <span class="variable">received</span>: <span class="keyword">true</span> }
+})
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">
+        <span>🖼️ 子页面 (iframe)</span>
+        <span class="badge">child.html</span>
+      </div>
+      <iframe id="childFrame" src="./child.html"></iframe>
+    </div>
+  </div>
+
+  <script src="./postmessage-duplex.umd.js"></script>
+  <script>
+    const logContainer = document.getElementById('logContainer');
+    const statusEl = document.getElementById('status');
+    let channel;
+    
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+      logContainer.appendChild(item);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function clearLog() {
+      logContainer.innerHTML = '';
+      log('日志已清空', 'info');
+    }
+    
+    function updateStatus(connected) {
+      if (connected) {
+        statusEl.className = 'status ready';
+        statusEl.innerHTML = '<span class="status-dot"></span>已连接';
+      } else {
+        statusEl.className = 'status disconnected';
+        statusEl.innerHTML = '<span class="status-dot"></span>已断开';
+      }
+    }
+    
+    // 等待 iframe 加载
+    window.onload = function() {
+      const iframe = document.getElementById('childFrame');
+      
+      try {
+        // 使用库创建通道
+        const { IframeChannel } = PostMessageChannel;
+        channel = new IframeChannel(iframe, {
+          timeout: 5000
+        });
+        
+        log('✅ 通道已创建，等待子页面就绪...', 'info');
+        
+        // 监听子页面消息
+        channel.subscribe('childReady', ({ data }) => {
+          log('🎉 子页面已就绪: ' + JSON.stringify(data), 'receive');
+          updateStatus(true);
+          return { acknowledged: true };
+        });
+        
+        channel.subscribe('notify', ({ data }) => {
+          log('📨 收到通知: ' + JSON.stringify(data), 'receive');
+          return { received: true, time: Date.now() };
+        });
+        
+        channel.subscribe('ping', () => {
+          log('🏓 收到 ping，回复 pong', 'receive');
+          return { pong: true };
+        });
+        
+      } catch (error) {
+        log('❌ 初始化失败: ' + error.message, 'error');
+        updateStatus(false);
+      }
+    };
+    
+    async function sendMessage() {
+      const message = document.getElementById('messageInput').value;
+      log('📤 发送消息: ' + message, 'send');
+      
+      try {
+        const response = await channel.publish('greeting', { 
+          message,
+          from: 'parent',
+          time: Date.now()
+        });
+        
+        if (response.ret === 0) {
+          log('✅ 收到响应: ' + JSON.stringify(response.data), 'receive');
+        } else {
+          log('⚠️ 响应错误: ' + (response.msg || '未知错误'), 'error');
+        }
+      } catch (error) {
+        log('❌ 发送失败: ' + error.message, 'error');
+      }
+    }
+    
+    async function sendWithResponse() {
+      log('📤 请求数据: getData', 'send');
+      
+      try {
+        const response = await channel.publish('getData', { id: Math.floor(Math.random() * 100) });
+        
+        if (response.ret === 0) {
+          log('✅ 收到数据: ' + JSON.stringify(response.data), 'receive');
+        } else {
+          log('⚠️ 请求失败: ' + (response.msg || '未知错误'), 'error');
+        }
+      } catch (error) {
+        log('❌ 请求失败: ' + error.message, 'error');
+      }
+    }
+    
+    async function sendTimeout() {
+      log('📤 发送超时测试 (2秒超时)...', 'send');
+      
+      try {
+        const response = await channel.publish('slowOperation', {}, { timeout: 2000 });
+        
+        if (response.ret === -99) {
+          log('⏱️ 请求超时 (预期行为)', 'info');
+        } else {
+          log('✅ 收到响应: ' + JSON.stringify(response.data), 'receive');
+        }
+      } catch (error) {
+        log('⏱️ 请求超时: ' + error.message, 'info');
+      }
+    }
+  </script>
+</body>
+</html>

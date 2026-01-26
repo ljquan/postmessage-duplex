@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run linter
+        run: npm run lint:check
+      
+      - name: Run type check
+        run: npm run typecheck
+      
+      - name: Run tests
+        run: npm run test:coverage
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Upload coverage to Codecov
+        if: matrix.node-version == 20
+        uses: codecov/codecov-action@v4
+        with:
+          fail_ci_if_error: false
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Check if version changed
+        id: version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          NPM_VERSION=$(npm view postmessage-duplex version 2>/dev/null || echo "0.0.0")
+          if [ "$CURRENT_VERSION" != "$NPM_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Publish to npm
+        if: steps.version.outputs.changed == 'true'
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

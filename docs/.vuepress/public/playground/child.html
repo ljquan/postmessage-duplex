@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>子页面 - postmessage-duplex Playground</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 15px;
+      min-height: 100%;
+      color: white;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    h2 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      background: rgba(255,255,255,0.9);
+      color: #667eea;
+      transition: all 0.2s;
+    }
+    
+    button:hover {
+      background: white;
+      transform: translateY(-1px);
+    }
+    
+    .log-container {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 12px;
+      height: 150px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+    }
+    
+    .log-item {
+      padding: 3px 0;
+      opacity: 0.9;
+    }
+    
+    .log-time {
+      opacity: 0.7;
+    }
+    
+    .log-send {
+      color: #a5d6a7;
+    }
+    
+    .log-receive {
+      color: #90caf9;
+    }
+    
+    .log-error {
+      color: #ef9a9a;
+    }
+    
+    .code-hint {
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 10px;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>📱 子页面 (iframe)</h2>
+    <span class="badge">child.html</span>
+  </div>
+  
+  <div class="controls">
+    <button onclick="sendToParent()">发送消息给父页面</button>
+    <button onclick="sendPing()">发送 Ping</button>
+    <button onclick="clearLog()">清空日志</button>
+  </div>
+  
+  <div class="log-container" id="logContainer"></div>
+  
+  <div class="code-hint">
+    <span style="color:#a5d6a7">// 子页面代码示例</span><br>
+    const channel = new IframeChannel(parentOrigin)<br>
+    channel.subscribe('greeting', ({data}) => data)<br>
+    channel.publish('notify', {msg: 'Hi!'})
+  </div>
+
+  <script src="./postmessage-duplex.umd.js"></script>
+  <script>
+    const logContainer = document.getElementById('logContainer');
+    let channel;
+    
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+      logContainer.appendChild(item);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function clearLog() {
+      logContainer.innerHTML = '';
+      log('日志已清空');
+    }
+    
+    // 初始化
+    try {
+      const { IframeChannel } = PostMessageChannel;
+      
+      // 获取父页面 origin
+      const parentOrigin = window.location.origin;
+      channel = new IframeChannel(parentOrigin, {
+        timeout: 5000
+      });
+      
+      log('✅ 通道已创建');
+      
+      // 监听父页面消息
+      channel.subscribe('greeting', ({ data }) => {
+        log('📨 收到问候: ' + data.message, 'receive');
+        return { 
+          reply: 'Hello from child!',
+          originalMessage: data.message,
+          time: Date.now()
+        };
+      });
+      
+      channel.subscribe('getData', ({ data }) => {
+        log('📨 收到数据请求: id=' + data.id, 'receive');
+        // 模拟数据
+        return {
+          id: data.id,
+          name: 'Item ' + data.id,
+          price: Math.floor(Math.random() * 1000),
+          timestamp: Date.now()
+        };
+      });
+      
+      channel.subscribe('slowOperation', async ({ data }) => {
+        log('📨 收到慢操作请求，延迟 5 秒...', 'receive');
+        // 故意延迟，让父页面超时
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        return { completed: true };
+      });
+      
+      // 通知父页面子页面已就绪
+      setTimeout(() => {
+        channel.publish('childReady', { 
+          status: 'ready',
+          time: Date.now()
+        }).then(response => {
+          if (response.ret === 0) {
+            log('🎉 父页面已确认连接', 'send');
+          }
+        });
+      }, 100);
+      
+    } catch (error) {
+      log('❌ 初始化失败: ' + error.message, 'error');
+    }
+    
+    async function sendToParent() {
+      log('📤 发送消息给父页面', 'send');
+      
+      try {
+        const response = await channel.publish('notify', {
+          type: 'notification',
+          content: 'Hello from child!',
+          time: Date.now()
+        });
+        
+        if (response.ret === 0) {
+          log('✅ 父页面已确认: ' + JSON.stringify(response.data), 'receive');
+        } else {
+          log('⚠️ 响应错误: ' + response.msg, 'error');
+        }
+      } catch (error) {
+        log('❌ 发送失败: ' + error.message, 'error');
+      }
+    }
+    
+    async function sendPing() {
+      log('📤 发送 Ping', 'send');
+      
+      try {
+        const start = Date.now();
+        const response = await channel.publish('ping', {});
+        const latency = Date.now() - start;
+        
+        if (response.ret === 0 && response.data.pong) {
+          log(`🏓 收到 Pong! 延迟: ${latency}ms`, 'receive');
+        } else {
+          log('⚠️ Ping 失败', 'error');
+        }
+      } catch (error) {
+        log('❌ Ping 失败: ' + error.message, 'error');
+      }
+    }
+  </script>
+</body>
+</html>

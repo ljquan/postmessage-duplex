@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>postmessage-channel - Demo</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+    header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    header p {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .demo-card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .demo-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 15px 50px rgba(0,0,0,0.3);
+    }
+    .demo-card h2 {
+      margin: 0 0 12px;
+      color: #333;
+      font-size: 1.3rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .demo-card .icon {
+      font-size: 1.5rem;
+    }
+    .demo-card p {
+      color: #666;
+      margin: 0 0 16px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .demo-card .features {
+      margin: 0 0 16px;
+      padding: 0;
+      list-style: none;
+    }
+    .demo-card .features li {
+      color: #555;
+      font-size: 0.85rem;
+      padding: 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .demo-card .features li::before {
+      content: '✓';
+      color: #28a745;
+      font-weight: bold;
+    }
+    .demo-card a {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    .demo-card a:hover {
+      opacity: 0.9;
+    }
+    .info-section {
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 40px;
+      color: white;
+    }
+    .info-section h3 {
+      margin-top: 0;
+    }
+    .info-section code {
+      background: rgba(0,0,0,0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Menlo', monospace;
+    }
+    .info-section pre {
+      background: rgba(0,0,0,0.3);
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>📡 postmessage-channel</h1>
+      <p>轻量级 postMessage 双工通讯库，支持 iframe 和 Service Worker</p>
+    </header>
+
+    <div class="demo-grid">
+      <div class="demo-card">
+        <h2><span class="icon">🖼️</span> Iframe 通讯</h2>
+        <p>父页面与子 iframe 之间的双工通讯示例，展示消息发布订阅、超时处理、性能测试等功能。</p>
+        <ul class="features">
+          <li>父子页面双向通讯</li>
+          <li>消息队列自动处理</li>
+          <li>支持多个 iframe 实例</li>
+          <li>自动重连（子页面刷新）</li>
+        </ul>
+        <a href="./iframe/">查看示例 →</a>
+      </div>
+
+      <div class="demo-card">
+        <h2><span class="icon">⚙️</span> Service Worker 通讯</h2>
+        <p>页面与 Service Worker 之间的双工通讯示例，包括注册、连接、消息收发等完整流程。</p>
+        <ul class="features">
+          <li>SW 注册与生命周期管理</li>
+          <li>页面到 SW 消息发送</li>
+          <li>SW 到页面消息推送</li>
+          <li>错误处理与超时机制</li>
+        </ul>
+        <a href="./service-worker/">查看示例 →</a>
+      </div>
+
+      <div class="demo-card">
+        <h2><span class="icon">🔧</span> API 调试工具</h2>
+        <p>交互式 API 调试工具，可以手动测试各种消息类型，查看详细的请求响应日志。</p>
+        <ul class="features">
+          <li>自定义消息发送</li>
+          <li>实时日志查看</li>
+          <li>消息追踪 (Trace)</li>
+          <li>性能分析</li>
+        </ul>
+        <a href="./debugger/">查看工具 →</a>
+      </div>
+
+      <div class="demo-card" style="background: #f8f9fa;">
+        <h2><span class="icon">📚</span> 在线文档</h2>
+        <p>完整的 API 文档、使用指南和最佳实践，帮助你快速上手。</p>
+        <ul class="features">
+          <li>快速入门指南</li>
+          <li>完整 API 参考</li>
+          <li>TypeScript 类型定义</li>
+          <li>常见问题解答</li>
+        </ul>
+        <a href="https://ljquan.github.io/postmessage-duplex/" style="background: #6c757d;">查看文档 →</a>
+      </div>
+    </div>
+
+    <div class="info-section">
+      <h3>🚀 快速开始</h3>
+      <pre>
+# 安装依赖
+npm install
+
+# 启动开发服务器（自动构建 + 热重载）
+npm run dev
+
+# 仅构建
+npm run build
+
+# 监听模式构建
+npm run build:watch
+
+# 运行测试
+npm test</pre>
+      <p>开发服务器启动后，访问 <code>http://localhost:7100/demo/</code> 查看所有示例。</p>
+    </div>
+  </div>
+</body>
+
+</html>

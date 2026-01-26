@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API 调试工具 - postmessage-channel</title>
+  <script src="/dist/index.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100%;
+    }
+    .header {
+      background: #252526;
+      padding: 12px 20px;
+      border-bottom: 1px solid #3c3c3c;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #fff;
+    }
+    .header a {
+      color: #9cdcfe;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .main {
+      display: grid;
+      grid-template-columns: 300px 1fr 350px;
+      height: calc(100% - 50px);
+    }
+    @media (max-width: 1000px) {
+      .main {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
+      }
+    }
+    .sidebar {
+      background: #252526;
+      border-right: 1px solid #3c3c3c;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .sidebar h3 {
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      color: #888;
+      text-transform: uppercase;
+    }
+    .iframe-container {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .iframe-wrapper {
+      flex: 1;
+      border: 1px solid #3c3c3c;
+      border-radius: 4px;
+      overflow: hidden;
+      min-height: 200px;
+    }
+    .iframe-wrapper iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .log-panel {
+      background: #252526;
+      border-left: 1px solid #3c3c3c;
+      display: flex;
+      flex-direction: column;
+    }
+    .log-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #3c3c3c;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .log-header h3 {
+      margin: 0;
+      font-size: 0.9rem;
+    }
+    .log-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 11px;
+    }
+    .log-entry {
+      padding: 6px 8px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+    }
+    .log-entry.send { background: rgba(78, 201, 176, 0.1); border-left: 3px solid #4ec9b0; }
+    .log-entry.receive { background: rgba(220, 220, 170, 0.1); border-left: 3px solid #dcdcaa; }
+    .log-entry.info { background: rgba(156, 220, 254, 0.1); border-left: 3px solid #9cdcfe; }
+    .log-entry.error { background: rgba(244, 135, 113, 0.1); border-left: 3px solid #f48771; }
+    .log-time { color: #888; font-size: 10px; }
+    .log-type { font-weight: bold; margin-left: 8px; }
+    .log-data { margin-top: 4px; white-space: pre-wrap; word-break: break-all; }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 6px;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 8px 12px;
+      background: #3c3c3c;
+      border: 1px solid #555;
+      border-radius: 4px;
+      color: #d4d4d4;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #007acc;
+    }
+    textarea {
+      min-height: 100px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+    }
+    button {
+      padding: 8px 16px;
+      background: #0e639c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      width: 100%;
+    }
+    button:hover { background: #1177bb; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: #3c3c3c;
+    }
+    button.secondary:hover { background: #555; }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+    .btn-group button { flex: 1; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #3c3c3c;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #f48771;
+    }
+    .status-dot.connected { background: #4ec9b0; }
+    .divider {
+      height: 1px;
+      background: #3c3c3c;
+      margin: 16px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h1>🔧 API 调试工具</h1>
+    <a href="../">← 返回示例列表</a>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div class="status-bar">
+        <div id="status-dot" class="status-dot"></div>
+        <span id="status-text">未连接</span>
+      </div>
+
+      <h3>发送消息</h3>
+      <div class="form-group">
+        <label>命令名称 (cmdname)</label>
+        <input type="text" id="cmdname" placeholder="例如: getUserInfo" value="ping" />
+      </div>
+      <div class="form-group">
+        <label>数据 (JSON)</label>
+        <textarea id="data" placeholder='{"key": "value"}'>{}</textarea>
+      </div>
+      <button id="btn-send" disabled>发送消息</button>
+
+      <div class="divider"></div>
+
+      <h3>快捷操作</h3>
+      <div class="btn-group" style="margin-bottom: 8px;">
+        <button class="secondary" onclick="quickSend('ping', {})">Ping</button>
+        <button class="secondary" onclick="quickSend('echo', {message: 'test'})">Echo</button>
+      </div>
+      <div class="btn-group">
+        <button class="secondary" onclick="quickSend('getData', {id: 1})">Get Data</button>
+        <button class="secondary" onclick="quickSend('throwError', {})">Error</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <h3>消息追踪</h3>
+      <button class="secondary" onclick="showTrace()">查看追踪记录</button>
+    </div>
+
+    <div class="iframe-container">
+      <div class="iframe-wrapper">
+        <iframe id="iframe" src="./child.html"></iframe>
+      </div>
+    </div>
+
+    <div class="log-panel">
+      <div class="log-header">
+        <h3>通讯日志</h3>
+        <button class="secondary" onclick="clearLog()" style="width: auto; padding: 4px 12px;">清空</button>
+      </div>
+      <div id="log" class="log-content"></div>
+    </div>
+  </div>
+
+  <script>
+    var IframeChannel = window.PostMessageChannel.IframeChannel;
+    var channel = null;
+    var logEl = document.getElementById('log');
+
+    function log(type, direction, data) {
+      var time = new Date().toLocaleTimeString() + '.' + Date.now() % 1000;
+      var entry = document.createElement('div');
+      entry.className = 'log-entry ' + type;
+      entry.innerHTML = '<div><span class="log-time">' + time + '</span><span class="log-type">' + direction + '</span></div>' +
+        '<div class="log-data">' + JSON.stringify(data, null, 2) + '</div>';
+      logEl.insertBefore(entry, logEl.firstChild);
+    }
+
+    function clearLog() { logEl.innerHTML = ''; }
+
+    function updateStatus(connected) {
+      document.getElementById('status-dot').className = 'status-dot' + (connected ? ' connected' : '');
+      document.getElementById('status-text').textContent = connected ? '已连接' : '未连接';
+      document.getElementById('btn-send').disabled = !connected;
+    }
+
+    // 初始化通道
+    var iframe = document.getElementById('iframe');
+    channel = new IframeChannel(iframe, {
+      timeout: 5000,
+      subscribeMap: {
+        'message': function(payload) {
+          log('receive', '← 收到消息', payload);
+          return { received: true };
+        }
+      }
+    });
+
+    var checkReady = setInterval(function() {
+      if (channel.isReady) {
+        updateStatus(true);
+        log('info', '✓ 连接成功', { ready: true });
+        clearInterval(checkReady);
+      }
+    }, 100);
+
+    // 发送消息
+    document.getElementById('btn-send').addEventListener('click', function() {
+      var cmdname = document.getElementById('cmdname').value;
+      var dataStr = document.getElementById('data').value;
+      var data;
+      try {
+        data = JSON.parse(dataStr);
+      } catch (e) {
+        log('error', '✗ JSON 解析错误', { error: e.message });
+        return;
+      }
+      log('send', '→ 发送', { cmdname: cmdname, data: data });
+      channel.publish(cmdname, data).then(function(res) {
+        log('receive', '← 响应', res);
+      });
+    });
+
+    function quickSend(cmdname, data) {
+      document.getElementById('cmdname').value = cmdname;
+      document.getElementById('data').value = JSON.stringify(data, null, 2);
+      log('send', '→ 发送', { cmdname: cmdname, data: data });
+      channel.publish(cmdname, data).then(function(res) {
+        log('receive', '← 响应', res);
+      });
+    }
+
+    function showTrace() {
+      // 使用新的调试器 API
+      if (window.__POSTMESSAGE_DUPLEX__ && window.__POSTMESSAGE_DUPLEX__.debug) {
+        var history = window.__POSTMESSAGE_DUPLEX__.debug.getHistory();
+        log('info', '✓ 消息历史', { count: history.length, hint: '详情请查看控制台' });
+      } else {
+        log('warn', '⚠ 调试器未启用', { hint: '请先调用 enableDebugger()' });
+      }
+    }
+  </script>
+</body>
+
+</html>

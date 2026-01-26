@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>调试子页面</title>
+  <script src="/dist/index.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100%;
+    }
+    .container {
+      padding: 16px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .title {
+      font-size: 14px;
+      color: #9cdcfe;
+    }
+    .status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #4ec9b0;
+      color: #1e1e1e;
+    }
+    .status.pending { background: #dcdcaa; }
+    .log {
+      flex: 1;
+      background: #252526;
+      border-radius: 4px;
+      padding: 8px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 11px;
+    }
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #3c3c3c;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry.send { color: #4ec9b0; }
+    .log-entry.receive { color: #dcdcaa; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="title">📦 调试子页面</span>
+      <span id="status" class="status pending">连接中...</span>
+    </div>
+    <div id="log" class="log"></div>
+  </div>
+
+  <script>
+    var IframeChannel = window.PostMessageChannel.default;
+    var logEl = document.getElementById('log');
+
+    function addLog(type, text) {
+      var div = document.createElement('div');
+      div.className = 'log-entry ' + type;
+      div.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
+      logEl.insertBefore(div, logEl.firstChild);
+    }
+
+    var parentOrigin = document.referrer ? new URL(document.referrer).origin : location.origin;
+    
+    var ps = new IframeChannel(parentOrigin + '/', {
+      timeout: 5000,
+      subscribeMap: {
+        'ping': function() {
+          addLog('receive', 'Ping 收到');
+          return { pong: true, timestamp: Date.now() };
+        },
+        'echo': function({ data }) {
+          addLog('receive', 'Echo: ' + JSON.stringify(data));
+          return { echoed: data.message, time: Date.now() };
+        },
+        'getData': function({ data }) {
+          addLog('receive', 'GetData: id=' + data.id);
+          return { id: data.id, name: 'Item ' + data.id, value: Math.random() };
+        },
+        'throwError': function() {
+          addLog('receive', 'ThrowError 收到');
+          throw new Error('Test error from child');
+        },
+        'message': function({ data }) {
+          addLog('receive', '消息: ' + JSON.stringify(data));
+          return { received: true };
+        }
+      }
+    });
+
+    var checkReady = setInterval(function() {
+      if (ps.isReady) {
+        document.getElementById('status').className = 'status';
+        document.getElementById('status').textContent = '已连接';
+        addLog('send', '连接成功');
+        clearInterval(checkReady);
+      }
+    }, 100);
+  </script>
+</body>
+
+</html>

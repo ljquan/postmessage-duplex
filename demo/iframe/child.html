@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>子页面</title>
+  <script src="/dist/index.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f4f8;
+      height: 100%;
+    }
+    .container {
+      padding: 12px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .title {
+      font-weight: bold;
+      color: #333;
+      font-size: 14px;
+    }
+    .status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #28a745;
+      color: white;
+    }
+    .status.pending {
+      background: #ffc107;
+      color: #333;
+    }
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      background: #007bff;
+      color: white;
+    }
+    button:hover { background: #0056b3; }
+    .messages {
+      flex: 1;
+      background: white;
+      border-radius: 4px;
+      padding: 8px;
+      overflow-y: auto;
+      font-size: 11px;
+      font-family: monospace;
+      border: 1px solid #ddd;
+    }
+    .msg {
+      padding: 4px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .msg:last-child { border-bottom: none; }
+    .msg.sent { color: #28a745; }
+    .msg.received { color: #007bff; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="title">📦 子页面</span>
+      <span id="status" class="status pending">连接中...</span>
+    </div>
+    <div class="controls">
+      <input type="text" id="msg" placeholder="输入消息" value="Hello from child!" />
+      <button onclick="sendToParent()">发送到父页面</button>
+    </div>
+    <div id="messages" class="messages"></div>
+  </div>
+
+  <script>
+    var IframeChannel = window.PostMessageChannel.default;
+    var messagesEl = document.getElementById('messages');
+
+    function addMessage(type, text) {
+      var div = document.createElement('div');
+      div.className = 'msg ' + type;
+      div.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
+      messagesEl.insertBefore(div, messagesEl.firstChild);
+    }
+
+    // 获取父页面 origin（从 referrer 或当前 URL 参数）
+    var parentOrigin = document.referrer ? new URL(document.referrer).origin : location.origin;
+    
+    var ps = new IframeChannel(parentOrigin + '/', {
+      timeout: 5000,
+      subscribeMap: {
+        'message': function(payload) {
+          addMessage('received', '收到: ' + JSON.stringify(payload.data));
+          return { received: true, from: 'child', timestamp: Date.now() };
+        },
+        'ping': function() {
+          addMessage('received', 'Ping 收到');
+          return { pong: true, timestamp: Date.now() };
+        }
+      }
+    });
+
+    // 更新状态
+    var checkReady = setInterval(function() {
+      if (ps.isReady) {
+        document.getElementById('status').className = 'status';
+        document.getElementById('status').textContent = '已连接';
+        addMessage('sent', '连接成功');
+        clearInterval(checkReady);
+      }
+    }, 100);
+
+    function sendToParent() {
+      var msg = document.getElementById('msg').value;
+      addMessage('sent', '发送: ' + msg);
+      ps.publish('message', { content: msg, from: 'child' }).then(function(res) {
+        addMessage('received', '响应: ' + JSON.stringify(res.data || res.msg));
+      });
+    }
+  </script>
+</body>
+
+</html>
