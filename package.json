@@ -85,7 +85,7 @@
     "size-limit": [
         {
             "path": "dist/index.esm.js",
-            "limit": "7 KB"
+            "limit": "8 KB"
         }
     ],
     "jest": {

@@ -98,7 +98,7 @@ const response = await channel.call('getData', { id: 1 })
 
 | 特性 | Comlink | Penpal | post-robot | postmessage-duplex |
 |------|---------|--------|------------|---------------------|
-| 包大小 | 1.1KB | ~5KB | ~15KB | ~3KB |
+| 包大小 | 1.1KB | ~5KB | ~15KB | ~8KB |
 | TypeScript 泛型 | ✅ | ✅ | ❌ | ✅ |
 | 单次调用超时 | ❌ | ✅ | ✅ | ✅ |
 | Service Worker | ✅ | ❌ | ❌ | ✅ |

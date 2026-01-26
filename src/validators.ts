@@ -60,237 +60,65 @@ function isValidReturnCode(value: unknown): value is ReturnCode {
   return typeof value === 'number' && Object.values(ReturnCode).includes(value)
 }
 
-/**
- * Validates an incoming message from postMessage.
- * Performs type checking and structure validation.
- *
- * @param data - The raw message data from MessageEvent
- * @returns Validation result with typed message if valid
- *
- * @example
- * const result = validateMessage(event.data)
- * if (result.valid) {
- *   processMessage(result.message)
- * } else {
- *   console.warn('Invalid message:', result.error)
- * }
- */
+const fail = (e: string): ValidationResult => ({ valid: false, error: e })
+
 export function validateMessage(data: unknown): ValidationResult {
-  // Must be an object
-  if (!isPlainObject(data)) {
-    return {
-      valid: false,
-      error: 'Message must be an object'
-    }
-  }
+  if (!isPlainObject(data)) return fail('Message must be an object')
 
-  const message = data as ChannelMessage
+  const m = data as ChannelMessage
+  const hasReqId = 'requestId' in m, hasCmd = 'cmdname' in m, hasMsg = 'msg' in m, hasRet = 'ret' in m
 
-  // Check for at least one identifying field
-  const hasRequestId = 'requestId' in message
-  const hasCmdname = 'cmdname' in message
-  const hasMsg = 'msg' in message
-  const hasRet = 'ret' in message
+  if (!hasReqId && !hasCmd && !hasMsg) return fail('Message must have requestId, cmdname, or msg field')
+  if (hasReqId && typeof m.requestId !== 'string') return fail('requestId must be a string')
+  if (hasCmd && typeof m.cmdname !== 'string') return fail('cmdname must be a string')
+  if (hasMsg && typeof m.msg !== 'string') return fail('msg must be a string')
+  if (hasRet && !isValidReturnCode(m.ret)) return fail('ret must be a valid ReturnCode')
+  if ('data' in m && m.data !== undefined && !isPlainObject(m.data)) return fail('data must be an object')
+  if ('_senderKey' in m && m._senderKey !== undefined && typeof m._senderKey !== 'string') return fail('_senderKey must be a string')
+  if ('time' in m && m.time !== undefined && (typeof m.time !== 'number' || !Number.isFinite(m.time))) return fail('time must be a finite number')
 
-  if (!hasRequestId && !hasCmdname && !hasMsg) {
-    return {
-      valid: false,
-      error: 'Message must have requestId, cmdname, or msg field'
-    }
-  }
-
-  // Validate requestId if present
-  if (hasRequestId && typeof message.requestId !== 'string') {
-    return {
-      valid: false,
-      error: 'requestId must be a string'
-    }
-  }
-
-  // Validate cmdname if present
-  if (hasCmdname && typeof message.cmdname !== 'string') {
-    return {
-      valid: false,
-      error: 'cmdname must be a string'
-    }
-  }
-
-  // Validate msg if present
-  if (hasMsg && typeof message.msg !== 'string') {
-    return {
-      valid: false,
-      error: 'msg must be a string'
-    }
-  }
-
-  // Validate ret if present (response message)
-  if (hasRet && !isValidReturnCode(message.ret)) {
-    return {
-      valid: false,
-      error: 'ret must be a valid ReturnCode'
-    }
-  }
-
-  // Validate data if present
-  if ('data' in message && message.data !== undefined && !isPlainObject(message.data)) {
-    return {
-      valid: false,
-      error: 'data must be an object'
-    }
-  }
-
-  // Validate _senderKey if present
-  if ('_senderKey' in message && message._senderKey !== undefined) {
-    if (typeof message._senderKey !== 'string') {
-      return {
-        valid: false,
-        error: '_senderKey must be a string'
-      }
-    }
-  }
-
-  // Validate time if present
-  if ('time' in message && message.time !== undefined) {
-    if (typeof message.time !== 'number' || !Number.isFinite(message.time)) {
-      return {
-        valid: false,
-        error: 'time must be a finite number'
-      }
-    }
-  }
-
-  return {
-    valid: true,
-    message
-  }
+  return { valid: true, message: m }
 }
 
-/**
- * Validates a request message structure.
- * More strict validation for outgoing requests.
- *
- * @param data - The request data to validate
- * @returns Validation result
- */
 export function validateRequest(data: unknown): ValidationResult {
-  const baseResult = validateMessage(data)
-  if (!baseResult.valid) {
-    return baseResult
-  }
-
-  const message = baseResult.message!
-
-  // Request must have requestId and cmdname
-  if (!isNonEmptyString(message.requestId)) {
-    return {
-      valid: false,
-      error: 'Request must have a non-empty requestId'
-    }
-  }
-
-  if (!isNonEmptyString(message.cmdname)) {
-    return {
-      valid: false,
-      error: 'Request must have a non-empty cmdname'
-    }
-  }
-
-  return baseResult
+  const r = validateMessage(data)
+  if (!r.valid) return r
+  if (!isNonEmptyString(r.message!.requestId)) return fail('Request must have a non-empty requestId')
+  if (!isNonEmptyString(r.message!.cmdname)) return fail('Request must have a non-empty cmdname')
+  return r
 }
 
-/**
- * Validates a response message structure.
- *
- * @param data - The response data to validate
- * @returns Validation result
- */
 export function validateResponse(data: unknown): ValidationResult {
-  const baseResult = validateMessage(data)
-  if (!baseResult.valid) {
-    return baseResult
-  }
-
-  const message = baseResult.message!
-
-  // Response must have ret
-  if (!('ret' in message)) {
-    return {
-      valid: false,
-      error: 'Response must have a ret field'
-    }
-  }
-
-  return baseResult
+  const r = validateMessage(data)
+  if (!r.valid) return r
+  if (!('ret' in r.message!)) return fail('Response must have a ret field')
+  return r
 }
 
-/**
- * Checks if a message is a response (has ret field).
- * @param message - The message to check
- * @returns true if the message is a response
- */
-export function isResponseMessage(message: ChannelMessage): boolean {
-  return 'ret' in message && typeof message.ret === 'number'
+export function isResponseMessage(m: ChannelMessage): boolean {
+  return 'ret' in m && typeof m.ret === 'number'
 }
 
-/**
- * Checks if a message is a ready handshake message.
- * @param message - The message to check
- * @returns true if the message is a ready message
- */
-export function isReadyMessage(message: ChannelMessage): boolean {
-  return message.msg === 'ready'
+export function isReadyMessage(m: ChannelMessage): boolean {
+  return m.msg === 'ready'
 }
 
-/**
- * Sanitizes message data by removing potentially dangerous fields.
- * Use this for logging or debugging to prevent prototype pollution.
- *
- * @param message - The message to sanitize
- * @returns A safe copy of the message
- */
-export function sanitizeForLogging(message: ChannelMessage): Record<string, unknown> {
+export function sanitizeForLogging(m: ChannelMessage): Record<string, unknown> {
   const safe: Record<string, unknown> = {}
-
-  // Only copy known safe fields
-  const safeFields = ['requestId', 'cmdname', 'ret', 'msg', 'time', '_senderKey']
-
-  for (const field of safeFields) {
-    if (field in message) {
-      safe[field] = (message as Record<string, unknown>)[field]
-    }
+  for (const f of ['requestId', 'cmdname', 'ret', 'msg', 'time', '_senderKey']) {
+    if (f in m) safe[f] = (m as Record<string, unknown>)[f]
   }
-
-  // Stringify data to prevent object reference issues
-  if ('data' in message && message.data !== undefined) {
-    try {
-      safe.data = JSON.parse(JSON.stringify(message.data))
-    } catch {
-      safe.data = '[Unserializable data]'
-    }
+  if ('data' in m && m.data !== undefined) {
+    try { safe.data = JSON.parse(JSON.stringify(m.data)) } catch { safe.data = '[Unserializable]' }
   }
-
   return safe
 }
 
-/**
- * Estimates the byte size of a message after JSON serialization.
- * Uses a faster estimation than full serialization when possible.
- *
- * @param data - The data to estimate size for
- * @returns Estimated size in bytes
- */
 export function estimateMessageSize(data: unknown): number {
   try {
-    // Use Blob for accurate byte size (handles Unicode properly)
     const json = JSON.stringify(data)
-    if (typeof Blob !== 'undefined') {
-      return new Blob([json]).size
-    }
-    // Fallback for environments without Blob (approximate)
-    return json.length * 2 // Rough estimate for UTF-16
-  } catch {
-    return Infinity // Can't serialize = too large
-  }
+    return typeof Blob !== 'undefined' ? new Blob([json]).size : json.length * 2
+  } catch { return Infinity }
 }
 
 export default {

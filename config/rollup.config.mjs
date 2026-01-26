@@ -39,10 +39,18 @@ const createPlugins = (emitDeclarations = false) => [
     terser({
         compress: {
             drop_console: false,
-            passes: 2
+            passes: 3,
+            pure_getters: true,
+            unsafe_arrows: true,
+            unsafe_methods: true,
+            toplevel: true,
+            booleans_as_integers: true
         },
         mangle: {
-            properties: false
+            properties: {
+                regex: /^_[a-z]/  // Only mangle private properties starting with _lowercase
+            },
+            toplevel: true
         },
         format: {
             comments: false
