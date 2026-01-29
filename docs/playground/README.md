@@ -4,19 +4,35 @@
 
 ## 交互式 Playground
 
-<div style="margin: 20px 0;">
+<div style="margin: 20px 0; display: flex; gap: 12px; flex-wrap: wrap;">
   <a href="/postmessage-duplex/playground/parent.html" target="_blank" style="display: inline-block; padding: 12px 24px; background: #3eaf7c; color: white; border-radius: 6px; text-decoration: none; font-weight: 500;">
-    🚀 打开 Playground
+    🖼️ Iframe 示例
+  </a>
+  <a href="/postmessage-duplex/playground/sw-demo.html" target="_blank" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; border-radius: 6px; text-decoration: none; font-weight: 500;">
+    ⚙️ Service Worker 示例
   </a>
 </div>
 
-在 Playground 中，您可以：
+### Iframe Playground
+
+体验父页面与 iframe 子页面之间的双向通讯：
 
 - ✅ **发送消息** - 从父页面向子页面发送消息
 - ✅ **请求数据** - 体验请求-响应模式
 - ✅ **测试超时** - 观察超时处理机制
 - ✅ **查看日志** - 实时查看通讯过程
 - ✅ **双向通讯** - 子页面也可以向父页面发送消息
+
+### Service Worker Playground
+
+体验页面与 Service Worker 之间的双向通讯：
+
+- ✅ **注册/注销 SW** - 管理 Service Worker 生命周期
+- ✅ **Ping 测试** - 测量通讯延迟
+- ✅ **数据请求** - 从 SW 获取数据
+- ✅ **Echo 回显** - 验证消息往返
+- ✅ **错误处理** - 观察错误响应
+- ✅ **超时机制** - 测试请求超时
 
 ## 快速体验
 

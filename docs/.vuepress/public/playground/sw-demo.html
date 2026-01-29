@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Worker - postmessage-duplex Playground</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: #f5f7fa;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    
+    .nav {
+      margin-bottom: 20px;
+    }
+    
+    .nav a {
+      color: #3eaf7c;
+      text-decoration: none;
+      margin-right: 20px;
+    }
+    
+    .nav a:hover {
+      text-decoration: underline;
+    }
+    
+    .panel {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .panel-title .badge {
+      background: #667eea;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .row {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .col {
+      flex: 1;
+    }
+    
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .status-label {
+      font-weight: 500;
+      min-width: 140px;
+      color: #606266;
+    }
+    
+    .badge {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    
+    .badge.success { background: #d4edda; color: #155724; }
+    .badge.warning { background: #fff3cd; color: #856404; }
+    .badge.error { background: #f8d7da; color: #721c24; }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    button:hover {
+      transform: translateY(-1px);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background: #5a6fd6;
+    }
+    
+    .btn-success {
+      background: #3eaf7c;
+      color: white;
+    }
+    
+    .btn-success:hover:not(:disabled) {
+      background: #359468;
+    }
+    
+    .btn-warning {
+      background: #e6a23c;
+      color: white;
+    }
+    
+    .btn-warning:hover:not(:disabled) {
+      background: #cf9236;
+    }
+    
+    .btn-danger {
+      background: #f56c6c;
+      color: white;
+    }
+    
+    .btn-danger:hover:not(:disabled) {
+      background: #dd6161;
+    }
+    
+    .log-container {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 15px;
+      height: 300px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+    }
+    
+    .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+    
+    .log-item:last-child {
+      border-bottom: none;
+    }
+    
+    .log-time {
+      color: #888;
+    }
+    
+    .log-send {
+      color: #4ec9b0;
+    }
+    
+    .log-receive {
+      color: #dcdcaa;
+    }
+    
+    .log-error {
+      color: #f48771;
+    }
+    
+    .log-info {
+      color: #9cdcfe;
+    }
+    
+    .input-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    input[type="text"], input[type="number"] {
+      flex: 1;
+      padding: 10px 15px;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    
+    input[type="text"]:focus, input[type="number"]:focus {
+      border-color: #667eea;
+    }
+    
+    .code-block {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 15px;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+      color: #d4d4d4;
+      line-height: 1.5;
+    }
+    
+    .code-block .keyword { color: #569cd6; }
+    .code-block .string { color: #ce9178; }
+    .code-block .function { color: #dcdcaa; }
+    .code-block .comment { color: #6a9955; }
+    .code-block .variable { color: #9cdcfe; }
+    
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-left: 10px;
+    }
+    
+    .status.ready {
+      background: #e1f3d8;
+      color: #67c23a;
+    }
+    
+    .status.disconnected {
+      background: #fde2e2;
+      color: #f56c6c;
+    }
+    
+    .status.pending {
+      background: #fdf6ec;
+      color: #e6a23c;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    
+    @media (max-width: 768px) {
+      .row {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="nav">
+      <a href="./parent.html">Iframe 示例</a>
+      <a href="./sw-demo.html" style="font-weight: bold;">Service Worker 示例</a>
+    </div>
+    
+    <h1>
+      Service Worker 通讯
+      <span class="status pending" id="status">
+        <span class="status-dot"></span>
+        检查中...
+      </span>
+    </h1>
+    
+    <div class="row">
+      <div class="col">
+        <div class="panel">
+          <div class="panel-title">
+            <span>连接状态</span>
+          </div>
+          
+          <div class="status-row">
+            <span class="status-label">Service Worker:</span>
+            <span id="sw-status" class="badge warning">检查中...</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">通道状态:</span>
+            <span id="channel-status" class="badge warning">未连接</span>
+          </div>
+          
+          <div class="controls">
+            <button class="btn-primary" id="btn-register">注册 SW</button>
+            <button class="btn-success" id="btn-connect" disabled>连接通道</button>
+            <button class="btn-danger" id="btn-unregister">注销 SW</button>
+          </div>
+        </div>
+        
+        <div class="panel">
+          <div class="panel-title">
+            <span>测试操作</span>
+            <span class="badge">页面 → SW</span>
+          </div>
+          
+          <div class="input-group">
+            <input type="text" id="echo-msg" placeholder="输入回显消息" value="Hello Service Worker!">
+            <button class="btn-primary" id="btn-echo" disabled>Echo</button>
+          </div>
+          
+          <div class="input-group">
+            <input type="number" id="data-id" placeholder="数据 ID" value="42">
+            <button class="btn-success" id="btn-getData" disabled>获取数据</button>
+          </div>
+          
+          <div class="controls">
+            <button class="btn-primary" id="btn-ping" disabled>Ping</button>
+            <button class="btn-warning" id="btn-error" disabled>测试错误</button>
+            <button class="btn-danger" id="btn-timeout" disabled>测试超时</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="col">
+        <div class="panel">
+          <div class="panel-title">
+            <span>示例代码</span>
+            <span class="badge">页面端</span>
+          </div>
+          <div class="code-block">
+<span class="comment">// 创建 Service Worker 通道</span>
+<span class="keyword">const</span> <span class="variable">channel</span> = <span class="keyword">await</span> <span class="variable">ServiceWorkerChannel</span>
+  .<span class="function">createFromPage</span>()
+
+<span class="comment">// 发送消息到 SW</span>
+<span class="keyword">const</span> <span class="variable">response</span> = <span class="keyword">await</span> <span class="variable">channel</span>.<span class="function">publish</span>(
+  <span class="string">'getData'</span>, 
+  { <span class="variable">id</span>: <span class="string">42</span> }
+)
+console.<span class="function">log</span>(<span class="variable">response</span>.<span class="variable">data</span>)
+
+<span class="comment">// 监听 SW 推送</span>
+<span class="variable">channel</span>.<span class="function">subscribe</span>(<span class="string">'push'</span>, ({ <span class="variable">data</span> }) => {
+  console.<span class="function">log</span>(<span class="string">'SW 推送:'</span>, <span class="variable">data</span>)
+  <span class="keyword">return</span> { <span class="variable">received</span>: <span class="keyword">true</span> }
+})
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">
+        <span>通讯日志</span>
+        <button class="btn-warning" onclick="clearLog()" style="margin-left: auto; padding: 6px 12px; font-size: 12px;">清空</button>
+      </div>
+      <div class="log-container" id="logContainer"></div>
+    </div>
+  </div>
+
+  <script src="./postmessage-duplex.umd.js"></script>
+  <script>
+    const { ServiceWorkerChannel } = PostMessageChannel;
+    
+    // DOM elements
+    const logContainer = document.getElementById('logContainer');
+    const statusEl = document.getElementById('status');
+    const swStatus = document.getElementById('sw-status');
+    const channelStatus = document.getElementById('channel-status');
+    
+    const btnRegister = document.getElementById('btn-register');
+    const btnConnect = document.getElementById('btn-connect');
+    const btnUnregister = document.getElementById('btn-unregister');
+    const btnPing = document.getElementById('btn-ping');
+    const btnGetData = document.getElementById('btn-getData');
+    const btnEcho = document.getElementById('btn-echo');
+    const btnError = document.getElementById('btn-error');
+    const btnTimeout = document.getElementById('btn-timeout');
+    
+    let channel = null;
+    
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+      logContainer.appendChild(item);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function clearLog() {
+      logContainer.innerHTML = '';
+      log('日志已清空', 'info');
+    }
+    
+    function updateStatus(connected) {
+      if (connected) {
+        statusEl.className = 'status ready';
+        statusEl.innerHTML = '<span class="status-dot"></span>已连接';
+      } else {
+        statusEl.className = 'status disconnected';
+        statusEl.innerHTML = '<span class="status-dot"></span>未连接';
+      }
+    }
+    
+    function updateSwStatus(status, text) {
+      swStatus.className = 'badge ' + status;
+      swStatus.textContent = text;
+    }
+    
+    function updateChannelStatus(status, text) {
+      channelStatus.className = 'badge ' + status;
+      channelStatus.textContent = text;
+    }
+    
+    function setTestButtonsEnabled(enabled) {
+      btnPing.disabled = !enabled;
+      btnGetData.disabled = !enabled;
+      btnEcho.disabled = !enabled;
+      btnError.disabled = !enabled;
+      btnTimeout.disabled = !enabled;
+    }
+    
+    // Check Service Worker support
+    if (!('serviceWorker' in navigator)) {
+      updateSwStatus('error', '不支持');
+      updateStatus(false);
+      log('Service Worker 不被此浏览器支持', 'error');
+      btnRegister.disabled = true;
+    } else {
+      navigator.serviceWorker.getRegistration().then(function(reg) {
+        if (reg && reg.active) {
+          updateSwStatus('success', '已注册');
+          btnConnect.disabled = false;
+          log('Service Worker 已注册: ' + reg.scope, 'info');
+        } else {
+          updateSwStatus('warning', '未注册');
+          log('未找到已注册的 Service Worker', 'info');
+        }
+        statusEl.className = 'status pending';
+        statusEl.innerHTML = '<span class="status-dot"></span>待连接';
+      });
+    }
+    
+    // Register SW
+    btnRegister.addEventListener('click', function() {
+      log('正在注册 Service Worker...', 'info');
+      navigator.serviceWorker.register('./sw.js')
+        .then(function(reg) {
+          log('Service Worker 注册成功: ' + reg.scope, 'info');
+          const sw = reg.installing || reg.waiting || reg.active;
+          if (sw) {
+            if (sw.state === 'activated') {
+              updateSwStatus('success', '已注册');
+              btnConnect.disabled = false;
+            } else {
+              sw.addEventListener('statechange', function() {
+                log('Service Worker 状态: ' + sw.state, 'info');
+                if (sw.state === 'activated') {
+                  updateSwStatus('success', '已注册');
+                  btnConnect.disabled = false;
+                }
+              });
+            }
+          }
+        })
+        .catch(function(err) {
+          log('注册失败: ' + err.message, 'error');
+          updateSwStatus('error', '注册失败');
+        });
+    });
+    
+    // Connect channel
+    btnConnect.addEventListener('click', function() {
+      log('正在连接到 Service Worker...', 'info');
+      ServiceWorkerChannel.createFromPage({
+        timeout: 5000
+      }).then(function(ch) {
+        channel = ch;
+        updateChannelStatus('success', '已连接');
+        updateStatus(true);
+        setTestButtonsEnabled(true);
+        log('通道连接成功！', 'info');
+        
+        channel.subscribe('notification', function(payload) {
+          log('📨 收到 SW 通知: ' + JSON.stringify(payload.data), 'receive');
+          return { received: true };
+        });
+      }).catch(function(err) {
+        log('连接失败: ' + err.message, 'error');
+        updateChannelStatus('error', '连接失败');
+        updateStatus(false);
+      });
+    });
+    
+    // Unregister SW
+    btnUnregister.addEventListener('click', function() {
+      navigator.serviceWorker.getRegistration().then(function(reg) {
+        if (reg) {
+          reg.unregister().then(function() {
+            log('Service Worker 已注销', 'info');
+            updateSwStatus('warning', '未注册');
+            updateChannelStatus('warning', '未连接');
+            updateStatus(false);
+            btnConnect.disabled = true;
+            setTestButtonsEnabled(false);
+            if (channel) {
+              channel.destroy();
+              channel = null;
+            }
+          });
+        }
+      });
+    });
+    
+    // Ping
+    btnPing.addEventListener('click', function() {
+      const start = Date.now();
+      log('📤 发送 Ping...', 'send');
+      channel.publish('ping').then(function(response) {
+        const latency = Date.now() - start;
+        if (response.ret === 0) {
+          log('📥 Pong 响应，延迟: ' + latency + 'ms, 数据: ' + JSON.stringify(response.data), 'receive');
+        } else {
+          log('⚠️ Ping 失败: ' + response.msg, 'error');
+        }
+      });
+    });
+    
+    // Get Data
+    btnGetData.addEventListener('click', function() {
+      const id = parseInt(document.getElementById('data-id').value) || 1;
+      log('📤 请求数据: id=' + id, 'send');
+      channel.publish('getData', { id: id }).then(function(response) {
+        if (response.ret === 0) {
+          log('📥 数据响应: ' + JSON.stringify(response.data), 'receive');
+        } else {
+          log('⚠️ 请求失败: ' + response.msg, 'error');
+        }
+      });
+    });
+    
+    // Echo
+    btnEcho.addEventListener('click', function() {
+      const message = document.getElementById('echo-msg').value;
+      log('📤 发送 Echo: ' + message, 'send');
+      channel.publish('echo', { message: message }).then(function(response) {
+        if (response.ret === 0) {
+          log('📥 Echo 响应: ' + JSON.stringify(response.data), 'receive');
+        } else {
+          log('⚠️ Echo 失败: ' + response.msg, 'error');
+        }
+      });
+    });
+    
+    // Error test
+    btnError.addEventListener('click', function() {
+      log('📤 发送错误测试请求...', 'send');
+      channel.publish('throwError').then(function(response) {
+        if (response.ret !== 0) {
+          log('⚠️ 错误响应（预期）: ' + response.msg, 'error');
+        } else {
+          log('📥 响应: ' + JSON.stringify(response.data), 'receive');
+        }
+      });
+    });
+    
+    // Timeout test
+    btnTimeout.addEventListener('click', function() {
+      log('📤 发送超时测试请求（将等待10秒，5秒后超时）...', 'send');
+      channel.publish('slowRequest', { delay: 10000 }).then(function(response) {
+        if (response.ret === -99) {
+          log('⏱️ 超时（预期）: 请求超过5秒未响应', 'error');
+        } else {
+          log('📥 响应: ' + JSON.stringify(response.data), 'receive');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
