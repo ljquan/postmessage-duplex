@@ -1,6 +1,6 @@
 {
     "name": "postmessage-duplex",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Lightweight duplex communication library based on postMessage API. Supports iframe and Service Worker.",
     "keywords": [
         "postmessage",
