@@ -274,7 +274,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
       )
     }
 
-    console.log('[ServiceWorkerChannel] Hub initialized', options.version ? `v${options.version}` : '')
   }
 
   /**
@@ -291,8 +290,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
         connectedAt: new Date().toISOString()
       }
       ServiceWorkerChannel.clientMeta.set(clientId, meta)
-      
-      console.log('[ServiceWorkerChannel] Client registered:', clientId, meta.appName || meta.appType || '')
       
       // Call user callback
       ServiceWorkerChannel.hubOptions.onClientConnect?.(clientId, meta)
@@ -339,17 +336,15 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
    */
   private static setupLifecycleEvents(): void {
     // Install event
-    self.addEventListener('install', ((event: any) => {
-      console.log('[ServiceWorkerChannel] Installing', ServiceWorkerChannel.hubOptions.version ? `v${ServiceWorkerChannel.hubOptions.version}` : '')
+    self.addEventListener('install', ((() => {
       // Skip waiting to activate immediately
       if (typeof (self as any).skipWaiting === 'function') {
         (self as any).skipWaiting()
       }
-    }) as EventListener)
+    }) as EventListener))
 
     // Activate event
     self.addEventListener('activate', ((event: any) => {
-      console.log('[ServiceWorkerChannel] Activating', ServiceWorkerChannel.hubOptions.version ? `v${ServiceWorkerChannel.hubOptions.version}` : '')
       
       // Claim all clients and notify them
       const activatePromise = (async () => {
@@ -375,7 +370,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
   private static async notifyAllClientsSwActivated(): Promise<void> {
     try {
       const clients = await self.clients.matchAll()
-      console.log('[ServiceWorkerChannel] Notifying', clients.length, 'clients of SW activation')
       
       for (const client of clients) {
         client.postMessage({
@@ -411,8 +405,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
           
           // Call user callback
           ServiceWorkerChannel.hubOptions.onClientDisconnect?.(clientId)
-          
-          console.log('[ServiceWorkerChannel] Cleaned up inactive client:', clientId)
         }
       }
     } catch (e) {
@@ -933,8 +925,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
         msg: 'ready',
         _senderKey: this.baseKey
       })
-      
-      console.log('[ServiceWorkerChannel] Worker reference refreshed and re-pairing initiated')
     } else {
       console.warn('[ServiceWorkerChannel] No active Service Worker found during refresh')
     }
@@ -991,7 +981,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
           regOptions.scope = opt.swScope
         }
         await navigator.serviceWorker.register(opt.swUrl, regOptions)
-        console.log('[ServiceWorkerChannel] Service Worker registered:', opt.swUrl)
       } catch (e) {
         console.error('[ServiceWorkerChannel] Failed to register Service Worker:', e)
         throw e
@@ -1043,8 +1032,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
     const autoReconnect = opt?.autoReconnect !== false  // default true
     if (autoReconnect) {
       channel.onBroadcast('__sw-activated__', async ({ data }) => {
-        console.log('[ServiceWorkerChannel] SW activated', data?.version ? `v${data.version}` : '')
-        
         // Emit event for users to handle reconnection
         channel.emit('sw-activated', { version: data?.version })
         
@@ -1056,9 +1043,6 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
           // Reset registered flag for re-registration
           isRegistered = false
           await registerClient()
-          if (isRegistered) {
-            console.log('[ServiceWorkerChannel] Re-registered successfully')
-          }
         }
       })
     }

@@ -144,8 +144,6 @@ export class ServiceWorkerHub {
         cleanupInterval
       )
     }
-
-    console.log('[ServiceWorkerHub] Initialized', options.version ? `v${options.version}` : '')
   }
 
   /**
@@ -432,8 +430,6 @@ export class ServiceWorkerHub {
         appName: data.appName
       })
       
-      console.log('[ServiceWorkerHub] Client registered:', clientId, meta.appName || meta.appType || '')
-      
       return {
         success: true,
         clientId,
@@ -460,15 +456,13 @@ export class ServiceWorkerHub {
    * Sets up SW lifecycle event handlers.
    */
   private setupLifecycleEvents(): void {
-    self.addEventListener('install', ((event: any) => {
-      console.log('[ServiceWorkerHub] Installing', this.options.version ? `v${this.options.version}` : '')
+    self.addEventListener('install', ((_event: any) => {
       if (typeof self.skipWaiting === 'function') {
         self.skipWaiting()
       }
     }) as EventListener)
 
     self.addEventListener('activate', ((event: any) => {
-      console.log('[ServiceWorkerHub] Activating', this.options.version ? `v${this.options.version}` : '')
       
       const activatePromise = (async () => {
         if (typeof self.clients?.claim === 'function') {
@@ -489,7 +483,6 @@ export class ServiceWorkerHub {
   async notifyAllClientsSwActivated(): Promise<void> {
     try {
       const clients = await self.clients.matchAll()
-      console.log('[ServiceWorkerHub] Notifying', clients.length, 'clients of SW activation')
       
       for (const client of clients) {
         client.postMessage({
@@ -521,8 +514,6 @@ export class ServiceWorkerHub {
           this.channelsByClientId.delete(clientId)
           this.clientMeta.delete(clientId)
           this.options.onClientDisconnect?.(clientId)
-          
-          console.log('[ServiceWorkerHub] Cleaned up inactive client:', clientId)
         }
       }
     } catch (e) {
