@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iframe 多页面通讯演示 - postmessage-duplex</title>
+  <script src="./postmessage-duplex.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f7fa;
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+      color: white;
+      padding: 20px;
+    }
+    .header h1 {
+      margin: 0 0 8px;
+      font-size: 1.5rem;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 0.9rem;
+    }
+    .header a {
+      color: white;
+      opacity: 0.8;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .description {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .description h2 {
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+      color: #2c3e50;
+    }
+    .description ul {
+      margin: 0;
+      padding-left: 20px;
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .description li {
+      margin-bottom: 4px;
+    }
+    .iframe-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 900px) {
+      .iframe-grid { grid-template-columns: 1fr; }
+    }
+    .iframe-container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .iframe-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #eee;
+    }
+    .iframe-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .app-badge {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+    }
+    .app-badge.cart { background: #667eea; }
+    .app-badge.user { background: #f5576c; }
+    .iframe-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .iframe-wrapper {
+      height: 400px;
+    }
+    .iframe-wrapper iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .hub-panel {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .hub-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+      color: white;
+    }
+    .hub-body {
+      padding: 16px;
+    }
+    .section {
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary { background: #007bff; color: white; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-warning { background: #ffc107; color: #333; }
+    .btn-info { background: #17a2b8; color: white; }
+    .btn-secondary { background: #6c757d; color: white; }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .log-container {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+      font-family: Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: #d4d4d4;
+    }
+    .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid #333;
+    }
+    .log-item:last-child { border-bottom: none; }
+    .log-time { color: #888; }
+    .log-send { color: #4ec9b0; }
+    .log-receive { color: #dcdcaa; }
+    .log-broadcast { color: #ce9178; }
+    .log-error { color: #f48771; }
+    .log-info { color: #9cdcfe; }
+    .clients-list {
+      background: #f8f9fa;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 13px;
+    }
+    .client-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      background: white;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+    .client-item:last-child { margin-bottom: 0; }
+    .client-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .client-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #28a745;
+    }
+    .client-type {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #e9ecef;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🖼️ Iframe 多页面通讯演示</h1>
+    <p><a href="./">← 返回</a> | 父页面作为 Hub 管理多个子 iframe 的通讯</p>
+  </div>
+  
+  <div class="container">
+    <div class="description">
+      <h2>通讯模式说明</h2>
+      <ul>
+        <li><strong>点对点通讯</strong>：父页面 ↔ 子页面，有请求-响应</li>
+        <li><strong>子页面间通讯</strong>：子页面 A → 父页面(Hub) → 子页面 B</li>
+        <li><strong>广播通讯</strong>：父页面 → 所有子页面（单向，无响应）</li>
+        <li><strong>类型广播</strong>：父页面 → 指定类型的子页面（如只给购物车广播）</li>
+      </ul>
+    </div>
+    
+    <div class="iframe-grid">
+      <div class="iframe-container">
+        <div class="iframe-header">
+          <div class="iframe-title">
+            <span class="app-badge cart">应用 1</span>
+            <strong>购物车模块</strong>
+          </div>
+          <div class="iframe-actions">
+            <button class="btn-secondary btn-sm" onclick="reloadIframe('iframe1')">刷新</button>
+            <button class="btn-info btn-sm" onclick="window.open('./iframe-child1.html')">新窗口</button>
+          </div>
+        </div>
+        <div class="iframe-wrapper">
+          <iframe id="iframe1" src="./iframe-child1.html"></iframe>
+        </div>
+      </div>
+      
+      <div class="iframe-container">
+        <div class="iframe-header">
+          <div class="iframe-title">
+            <span class="app-badge user">应用 2</span>
+            <strong>用户中心</strong>
+          </div>
+          <div class="iframe-actions">
+            <button class="btn-secondary btn-sm" onclick="reloadIframe('iframe2')">刷新</button>
+            <button class="btn-info btn-sm" onclick="window.open('./iframe-child2.html')">新窗口</button>
+          </div>
+        </div>
+        <div class="iframe-wrapper">
+          <iframe id="iframe2" src="./iframe-child2.html"></iframe>
+        </div>
+      </div>
+    </div>
+    
+    <div class="hub-panel">
+      <div class="hub-header">
+        <span>🎛️ Hub 控制面板（父页面）</span>
+        <span id="hubStatus">运行中</span>
+      </div>
+      <div class="hub-body">
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-value" id="clientCount">0</div>
+            <div class="stat-label">已连接客户端</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="msgSent">0</div>
+            <div class="stat-label">发送消息</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="msgReceived">0</div>
+            <div class="stat-label">接收消息</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="msgForwarded">0</div>
+            <div class="stat-label">转发消息</div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">点对点操作</div>
+          <div class="btn-group">
+            <button class="btn-primary" onclick="pingAll()">Ping 所有客户端</button>
+            <button class="btn-success" onclick="sendToCart()">发送给购物车</button>
+            <button class="btn-success" onclick="sendToUser()">发送给用户中心</button>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">广播操作</div>
+          <div class="btn-group">
+            <button class="btn-warning" onclick="broadcastAll()">广播给所有</button>
+            <button class="btn-warning" onclick="broadcastToCart()">广播给购物车</button>
+            <button class="btn-warning" onclick="broadcastToUser()">广播给用户中心</button>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">已连接客户端</div>
+          <div id="clientsList" class="clients-list">
+            <div style="color: #999; text-align: center; padding: 16px;">等待客户端连接...</div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <div class="section-title">
+            通讯日志
+            <button class="btn-secondary btn-sm" onclick="clearLog()" style="float: right;">清空</button>
+          </div>
+          <div id="logContainer" class="log-container"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { IframeChannel, ReturnCode } = PostMessageChannel;
+    
+    // ========== Hub 状态管理 ==========
+    const clientMeta = new Map();  // iframeId -> { appType, appName, channel }
+    const stats = { sent: 0, received: 0, forwarded: 0 };
+    
+    // DOM elements
+    const logContainer = document.getElementById('logContainer');
+    const clientCountEl = document.getElementById('clientCount');
+    const msgSentEl = document.getElementById('msgSent');
+    const msgReceivedEl = document.getElementById('msgReceived');
+    const msgForwardedEl = document.getElementById('msgForwarded');
+    const clientsListEl = document.getElementById('clientsList');
+    
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+      logContainer.appendChild(item);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function clearLog() {
+      logContainer.innerHTML = '';
+    }
+    
+    function updateStats() {
+      clientCountEl.textContent = clientMeta.size;
+      msgSentEl.textContent = stats.sent;
+      msgReceivedEl.textContent = stats.received;
+      msgForwardedEl.textContent = stats.forwarded;
+    }
+    
+    function updateClientsList() {
+      if (clientMeta.size === 0) {
+        clientsListEl.innerHTML = '<div style="color: #999; text-align: center; padding: 16px;">等待客户端连接...</div>';
+        return;
+      }
+      
+      clientsListEl.innerHTML = '';
+      for (const [iframeId, meta] of clientMeta) {
+        const item = document.createElement('div');
+        item.className = 'client-item';
+        item.innerHTML = `
+          <div class="client-info">
+            <span class="client-status"></span>
+            <strong>${meta.appName || iframeId}</strong>
+            <span class="client-type">${meta.appType || 'unknown'}</span>
+          </div>
+          <span style="color: #999; font-size: 11px;">${iframeId}</span>
+        `;
+        clientsListEl.appendChild(item);
+      }
+    }
+    
+    // ========== 创建 Channel 的通用函数 ==========
+    function createChannelForIframe(iframeId, iframe) {
+      const channel = new IframeChannel(iframe, {
+        timeout: 5000
+      });
+      
+      // 监听 ready 事件
+      channel.on('ready', () => {
+        log(`[${iframeId}] iframe 已连接`, 'info');
+      });
+      
+      // 注册消息处理器
+      
+      // 客户端注册
+      channel.subscribe('__register__', ({ data }) => {
+        stats.received++;
+        const meta = {
+          appType: data.appType,
+          appName: data.appName,
+          channel: channel,
+          connectedAt: new Date().toISOString()
+        };
+        clientMeta.set(iframeId, meta);
+        updateStats();
+        updateClientsList();
+        log(`[${iframeId}] 客户端注册: ${data.appName} (${data.appType})`, 'info');
+        return { success: true, totalClients: clientMeta.size };
+      });
+      
+      // Ping
+      channel.subscribe('ping', () => {
+        stats.received++;
+        updateStats();
+        return { pong: true, from: 'Hub', timestamp: Date.now() };
+      });
+      
+      // 点对点消息（父页面处理）
+      channel.subscribe('directMessage', ({ data }) => {
+        stats.received++;
+        updateStats();
+        log(`📥 [点对点] 来自 ${data.from}: ${data.message}`, 'receive');
+        return { received: true, from: 'Hub' };
+      });
+      
+      // 转发给指定类型
+      channel.subscribe('forwardToType', async ({ data }) => {
+        stats.received++;
+        const { targetType, cmdname, data: payload } = data;
+        let sentCount = 0;
+        
+        for (const [id, meta] of clientMeta) {
+          if (meta.appType === targetType && id !== iframeId) {
+            try {
+              await meta.channel.publish(cmdname, payload);
+              stats.forwarded++;
+              sentCount++;
+            } catch (e) {
+              log(`转发失败 [${id}]: ${e.message}`, 'error');
+            }
+          }
+        }
+        
+        updateStats();
+        log(`🔀 转发给 ${targetType}: ${sentCount} 个客户端`, 'info');
+        return { success: true, sentCount };
+      });
+      
+      // 广播给所有
+      channel.subscribe('broadcastToAll', ({ data }) => {
+        stats.received++;
+        const { eventName, data: payload } = data;
+        let sentCount = 0;
+        
+        for (const [id, meta] of clientMeta) {
+          if (id !== iframeId) {
+            meta.channel.broadcast(eventName, payload);
+            stats.forwarded++;
+            sentCount++;
+          }
+        }
+        
+        updateStats();
+        log(`📢 广播给所有: ${sentCount} 个客户端`, 'broadcast');
+        return { success: true, sentCount };
+      });
+      
+      // 广播给指定类型
+      channel.subscribe('broadcastToType', ({ data }) => {
+        stats.received++;
+        const { targetType, eventName, data: payload } = data;
+        let sentCount = 0;
+        
+        for (const [id, meta] of clientMeta) {
+          if (meta.appType === targetType && id !== iframeId) {
+            meta.channel.broadcast(eventName, payload);
+            stats.forwarded++;
+            sentCount++;
+          }
+        }
+        
+        updateStats();
+        log(`🎯 广播给 ${targetType}: ${sentCount} 个客户端`, 'broadcast');
+        return { success: true, sentCount };
+      });
+      
+      return channel;
+    }
+    
+    // ========== 初始化 iframe channels ==========
+    const iframe1 = document.getElementById('iframe1');
+    const iframe2 = document.getElementById('iframe2');
+    
+    const channel1 = createChannelForIframe('iframe1', iframe1);
+    const channel2 = createChannelForIframe('iframe2', iframe2);
+    
+    // ========== Hub 操作函数 ==========
+    
+    function pingAll() {
+      log('📤 Ping 所有客户端...', 'send');
+      for (const [id, meta] of clientMeta) {
+        stats.sent++;
+        const start = Date.now();
+        meta.channel.publish('ping').then(res => {
+          stats.received++;
+          const latency = Date.now() - start;
+          updateStats();
+          log(`📥 [${meta.appName}] Pong! 延迟: ${latency}ms`, 'receive');
+        });
+      }
+      updateStats();
+    }
+    
+    function sendToCart() {
+      const message = `Hub 消息 @ ${new Date().toLocaleTimeString()}`;
+      log(`📤 发送给购物车: ${message}`, 'send');
+      
+      for (const [id, meta] of clientMeta) {
+        if (meta.appType === 'cart') {
+          stats.sent++;
+          meta.channel.publish('directMessage', {
+            message: message,
+            from: 'Hub'
+          }).then(res => {
+            stats.received++;
+            updateStats();
+            log(`📥 [${meta.appName}] 已收到`, 'receive');
+          });
+        }
+      }
+      updateStats();
+    }
+    
+    function sendToUser() {
+      const message = `Hub 消息 @ ${new Date().toLocaleTimeString()}`;
+      log(`📤 发送给用户中心: ${message}`, 'send');
+      
+      for (const [id, meta] of clientMeta) {
+        if (meta.appType === 'user') {
+          stats.sent++;
+          meta.channel.publish('directMessage', {
+            message: message,
+            from: 'Hub'
+          }).then(res => {
+            stats.received++;
+            updateStats();
+            log(`📥 [${meta.appName}] 已收到`, 'receive');
+          });
+        }
+      }
+      updateStats();
+    }
+    
+    function broadcastAll() {
+      const message = `Hub 广播 @ ${new Date().toLocaleTimeString()}`;
+      log(`📢 广播给所有: ${message}`, 'broadcast');
+      
+      for (const [id, meta] of clientMeta) {
+        stats.sent++;
+        meta.channel.broadcast('globalBroadcast', {
+          message: message,
+          from: 'Hub'
+        });
+      }
+      updateStats();
+    }
+    
+    function broadcastToCart() {
+      const message = `购物车专属广播 @ ${new Date().toLocaleTimeString()}`;
+      log(`🎯 广播给购物车: ${message}`, 'broadcast');
+      
+      for (const [id, meta] of clientMeta) {
+        if (meta.appType === 'cart') {
+          stats.sent++;
+          meta.channel.broadcast('typedBroadcast', {
+            message: message,
+            from: 'Hub',
+            targetType: 'cart'
+          });
+        }
+      }
+      updateStats();
+    }
+    
+    function broadcastToUser() {
+      const message = `用户中心专属广播 @ ${new Date().toLocaleTimeString()}`;
+      log(`🎯 广播给用户中心: ${message}`, 'broadcast');
+      
+      for (const [id, meta] of clientMeta) {
+        if (meta.appType === 'user') {
+          stats.sent++;
+          meta.channel.broadcast('typedBroadcast', {
+            message: message,
+            from: 'Hub',
+            targetType: 'user'
+          });
+        }
+      }
+      updateStats();
+    }
+    
+    function reloadIframe(iframeId) {
+      const iframe = document.getElementById(iframeId);
+      const meta = clientMeta.get(iframeId);
+      
+      // 清理旧的 channel
+      if (meta) {
+        meta.channel.destroy();
+        clientMeta.delete(iframeId);
+        updateClientsList();
+        log(`[${iframeId}] 客户端断开`, 'info');
+      }
+      
+      // 重新加载 iframe
+      iframe.src = iframe.src;
+      
+      // 重新创建 channel
+      setTimeout(() => {
+        const newChannel = createChannelForIframe(iframeId, iframe);
+        if (iframeId === 'iframe1') {
+          window.channel1 = newChannel;
+        } else {
+          window.channel2 = newChannel;
+        }
+      }, 100);
+    }
+    
+    // 暴露给全局
+    window.channel1 = channel1;
+    window.channel2 = channel2;
+    
+    log('Hub 已启动，等待客户端连接...', 'info');
+  </script>
+</body>
+</html>

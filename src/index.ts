@@ -11,7 +11,11 @@ export type { IframeChannelOption } from './iframe-channel'
 
 // 导出 Service Worker 通道
 export { default as ServiceWorkerChannel } from './sw-channel'
-export type { ServiceWorkerChannelOption } from './sw-channel'
+export type { ServiceWorkerChannelOption, UnknownClientCallback } from './sw-channel'
+
+// 导出 Service Worker Hub (for advanced use cases)
+export { ServiceWorkerHub } from './sw-hub'
+export type { HubChannel, ChannelFactory } from './sw-hub'
 
 // 导出错误类和错误码
 export { ChannelError, ErrorCode, createConnectionDestroyedError, createTimeoutError, createHandlerError } from './errors'
@@ -30,6 +34,7 @@ export {
   validateResponse,
   isResponseMessage,
   isReadyMessage,
+  isBroadcastMessage,
   sanitizeForLogging,
   estimateMessageSize
 } from './validators'
@@ -38,3 +43,7 @@ export type { ChannelMessage, ValidationResult } from './validators'
 // 导出调试工具
 export { enableDebugger, isDebuggerEnabled, getDebugger } from './debugger'
 export type { ChannelDebugger, ChannelInfo, HistoryEntry, ChannelStats } from './debugger'
+
+// 导出公共工具函数
+export { getGlobalScope, cloneMessage, generateUniqueId, safeSerialize } from './utils'
+export type { GlobalScope } from './utils'

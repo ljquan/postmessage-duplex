@@ -201,6 +201,79 @@ unSubscribe(cmdname: string): this
 
 **返回值：** `this`（支持链式调用）
 
+### broadcast
+
+发送广播消息（单向，无响应）。
+
+```typescript
+broadcast(cmdname: string, data?: any, options?: BroadcastOptions): void
+```
+
+**参数：**
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `cmdname` | `string` | 命令/事件名称 |
+| `data` | `any` | 要发送的数据 |
+| `options` | `BroadcastOptions` | 广播选项 |
+
+**返回值：** `void`（无返回值，fire-and-forget）
+
+**示例：**
+
+```typescript
+// 发送通知
+channel.broadcast('notification', { type: 'info', message: '操作成功' })
+
+// 使用 Transferable
+const buffer = new ArrayBuffer(1024)
+channel.broadcast('bufferUpdate', { buffer }, {
+  transferables: [buffer]
+})
+```
+
+### onBroadcast
+
+注册广播消息处理器。
+
+```typescript
+onBroadcast(cmdname: string, callback: (data: { cmdname: string; data?: any }) => void): this
+```
+
+**参数：**
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `cmdname` | `string` | 命令/事件名称 |
+| `callback` | `function` | 回调函数（无需返回值） |
+
+**返回值：** `this`（支持链式调用）
+
+**示例：**
+
+```typescript
+channel.onBroadcast('notification', ({ data }) => {
+  console.log('收到通知:', data.message)
+  // 无需返回值 - 广播是单向的
+})
+```
+
+### offBroadcast
+
+移除广播消息处理器。
+
+```typescript
+offBroadcast(cmdname: string): this
+```
+
+**参数：**
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `cmdname` | `string` | 命令/事件名称 |
+
+**返回值：** `this`（支持链式调用）
+
 ### destroy
 
 销毁通道，释放资源。

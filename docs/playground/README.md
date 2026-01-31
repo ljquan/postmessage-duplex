@@ -8,8 +8,14 @@
   <a href="/postmessage-duplex/playground/parent.html" target="_blank" style="display: inline-block; padding: 12px 24px; background: #3eaf7c; color: white; border-radius: 6px; text-decoration: none; font-weight: 500;">
     🖼️ Iframe 示例
   </a>
+  <a href="/postmessage-duplex/playground/iframe-multi-page.html" target="_blank" style="display: inline-block; padding: 12px 24px; background: #2c3e50; color: white; border-radius: 6px; text-decoration: none; font-weight: 500;">
+    🖼️ Iframe 多页面示例
+  </a>
   <a href="/postmessage-duplex/playground/sw-demo.html" target="_blank" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; border-radius: 6px; text-decoration: none; font-weight: 500;">
     ⚙️ Service Worker 示例
+  </a>
+  <a href="/postmessage-duplex/playground/sw-multi-page.html" target="_blank" style="display: inline-block; padding: 12px 24px; background: #ff9800; color: white; border-radius: 6px; text-decoration: none; font-weight: 500;">
+    📡 SW 多页面通讯示例
   </a>
 </div>
 
@@ -23,6 +29,16 @@
 - ✅ **查看日志** - 实时查看通讯过程
 - ✅ **双向通讯** - 子页面也可以向父页面发送消息
 
+### Iframe 多页面 Playground
+
+体验父页面作为 Hub 管理多个子 iframe 的通讯场景：
+
+- ✅ **多 iframe 管理** - 父页面作为 Hub 管理多个子 iframe
+- ✅ **点对点通讯** - 父页面与子页面双向请求-响应
+- ✅ **子页面间通讯** - 子页面 A → 父页面(Hub) → 子页面 B
+- ✅ **广播通讯** - 父页面向所有/指定类型子页面广播
+- ✅ **iframe 刷新处理** - 子 iframe 重新加载后自动重建连接
+
 ### Service Worker Playground
 
 体验页面与 Service Worker 之间的双向通讯：
@@ -33,6 +49,16 @@
 - ✅ **Echo 回显** - 验证消息往返
 - ✅ **错误处理** - 观察错误响应
 - ✅ **超时机制** - 测试请求超时
+
+### SW 多页面通讯 Playground
+
+体验一个 Service Worker 同时与多个应用页面通讯的场景：
+
+- ✅ **多客户端连接** - 两个独立应用同时连接同一个 SW
+- ✅ **消息广播** - 从任一应用向所有其他应用广播消息
+- ✅ **独立业务处理** - 每个应用有独立的业务功能（购物车/用户中心）
+- ✅ **实时通讯日志** - 观察多页面间的消息流转
+- ✅ **iframe 嵌入展示** - 在文档页面中同时展示两个应用
 
 ## 快速体验
 

@@ -59,9 +59,25 @@ export interface ChannelEventMap {
   'rate:limited': { currentCount: number; limit: number }
 
   /**
+   * Emitted when Service Worker is activated (Hub API).
+   * Only emitted on page side when autoReconnect is enabled.
+   */
+  'sw-activated': { version?: string }
+
+  /**
    * Emitted when message validation fails.
    */
   'validation:failed': { reason: string; data?: unknown }
+
+  /**
+   * Emitted when a broadcast message is sent.
+   */
+  'broadcast:sent': { cmdname: string }
+
+  /**
+   * Emitted when a broadcast message is received.
+   */
+  'broadcast:received': { cmdname: string; data?: Record<string, any> }
 }
 
 /**

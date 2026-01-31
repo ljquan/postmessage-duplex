@@ -48,7 +48,8 @@ const createPlugins = (emitDeclarations = false) => [
         },
         mangle: {
             properties: {
-                regex: /^_[a-z]/  // Only mangle private properties starting with _lowercase
+                regex: /^_[a-z]/,  // Mangle private properties starting with _lowercase
+                reserved: ['_broadcast', '_senderKey']  // Preserve public API properties
             },
             toplevel: true
         },

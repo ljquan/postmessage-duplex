@@ -117,6 +117,34 @@ export interface PublishOptions {
 }
 
 /**
+ * Options for a single broadcast call.
+ * @interface BroadcastOptions
+ */
+export interface BroadcastOptions {
+  /**
+   * Transferable objects to transfer ownership of.
+   * Objects in this array will be transferred (not copied) to the receiver.
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Transferable_objects
+   */
+  transferables?: Transferable[]
+}
+
+/**
+ * Broadcast message structure for one-way communication.
+ * @interface BroadcastMessage
+ */
+export interface BroadcastMessage {
+  /** Command name identifying the broadcast type */
+  cmdname: string
+  /** Optional payload data */
+  data?: Record<string, any>
+  /** Timestamp when message was created */
+  time?: number
+  /** Indicates this is a broadcast message (no response expected) */
+  _broadcast: true
+}
+
+/**
  * Generic response wrapper with typed data.
  * @interface TypedPostResponse
  * @template T - The type of the response data
@@ -258,8 +286,123 @@ export interface Communicator<TMethods extends Methods = Methods> {
   subscribeOnce(cmdname: string, callback: PostCallback): Communicator<TMethods>
 
   /**
+   * Broadcasts a one-way message without expecting a response.
+   * This is a fire-and-forget operation - no response or acknowledgment is returned.
+   * 
+   * @param cmdname - The command name to identify the broadcast type
+   * @param data - Optional payload data to send
+   * @param options - Optional broadcast options (transferables)
+   * @returns void
+   * 
+   * @example
+   * // Send a notification without waiting for response
+   * channel.broadcast('userLoggedIn', { userId: 123, timestamp: Date.now() })
+   * 
+   * // With transferable objects
+   * const buffer = new ArrayBuffer(1024)
+   * channel.broadcast('sendBuffer', { buffer }, { transferables: [buffer] })
+   */
+  broadcast(cmdname: string, data?: Record<string, any>, options?: BroadcastOptions): void
+
+  /**
+   * Registers a handler for broadcast messages with the specified command name.
+   * Unlike subscribe, broadcast handlers do not return a response.
+   * 
+   * @param cmdname - The command name to listen for
+   * @param callback - Handler function called when broadcast is received
+   * @returns The communicator instance for chaining
+   * 
+   * @example
+   * channel.onBroadcast('userLoggedIn', ({ data }) => {
+   *   console.log('User logged in:', data.userId)
+   *   // No return value - broadcasts are one-way
+   * })
+   */
+  onBroadcast(cmdname: string, callback: (data: { cmdname: string; data?: Record<string, any> }) => void): Communicator<TMethods>
+
+  /**
+   * Removes the broadcast handler for the specified command name.
+   * @param cmdname - The command name to stop listening for
+   * @returns The communicator instance for chaining
+   */
+  offBroadcast(cmdname: string): Communicator<TMethods>
+
+  /**
    * Destroys the channel and cleans up all resources.
    * Removes message listeners, clears subscriptions, and pending tasks.
    */
   destroy(): void
 }
+
+// ============================================================================
+// Service Worker Hub Types
+// ============================================================================
+
+/**
+ * Metadata for a connected client in the Service Worker Hub.
+ * @interface ClientMeta
+ */
+export interface ClientMeta {
+  /** Unique client identifier assigned by the browser */
+  clientId: string
+  /** Application type for categorizing clients (e.g., 'cart', 'user') */
+  appType?: string
+  /** Human-readable application name */
+  appName?: string
+  /** ISO timestamp when the client connected */
+  connectedAt: string
+}
+
+/**
+ * Options for initializing the Service Worker Hub.
+ * @interface HubOptions
+ */
+export interface HubOptions {
+  /** Version string for the Service Worker (used in sw-activated notification) */
+  version?: string
+  /** Callback invoked when a client connects and registers */
+  onClientConnect?: (clientId: string, meta: ClientMeta) => void
+  /** Callback invoked when a client disconnects */
+  onClientDisconnect?: (clientId: string) => void
+  /** Interval in milliseconds for cleaning up inactive clients (default: 30000) */
+  cleanupInterval?: number
+}
+
+/**
+ * Extended options for ServiceWorkerChannel.createFromPage().
+ * @interface PageChannelOptions
+ */
+export interface PageChannelOptions {
+  /** Timeout in milliseconds for requests (default: 5000) */
+  timeout?: number
+  /** Application type for categorizing this client (used for broadcastToType) */
+  appType?: string
+  /** Human-readable application name */
+  appName?: string
+  /** Whether to automatically reconnect when SW updates (default: true) */
+  autoReconnect?: boolean
+  /** 
+   * Service Worker script URL. If provided, automatically registers the SW before connecting.
+   * This simplifies initialization - just call createFromPage() and everything is handled.
+   * @example '/sw.js' or './service-worker.js'
+   */
+  swUrl?: string
+  /**
+   * Service Worker scope. Only used when swUrl is provided.
+   * @example '/app/' or './'
+   */
+  swScope?: string
+}
+
+/**
+ * Handler function type for global subscriptions in Service Worker Hub.
+ * @callback GlobalSubscribeHandler
+ */
+export type GlobalSubscribeHandler = (context: {
+  /** Request data */
+  data: Record<string, any>
+  /** Client ID of the sender */
+  clientId: string
+  /** Client metadata (if registered) */
+  clientMeta?: ClientMeta
+}) => any | Promise<any>

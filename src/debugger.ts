@@ -22,10 +22,11 @@
  * // __POSTMESSAGE_DUPLEX__.debug.help()
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type BaseChannel from './base-channel'
 import { PKG_NAME, PKG_VERSION } from './trace'
+import { getGlobalScope } from './utils'
 
 // WeakRef polyfill type declaration for older environments
 declare class WeakRef<T extends object> {
@@ -33,8 +34,8 @@ declare class WeakRef<T extends object> {
   deref(): T | undefined
 }
 
-// 兼容 Service Worker 环境
-const globalScope = typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {}) as any
+// Get global scope (compatible with browser and Service Worker)
+const globalScope = getGlobalScope() as any
 
 /**
  * 通道信息接口

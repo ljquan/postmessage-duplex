@@ -468,31 +468,44 @@ console.<span class="function">log</span>(<span class="variable">response</span>
     }
     
     // Register SW
-    btnRegister.addEventListener('click', function() {
-      log('正在注册 Service Worker...', 'info');
-      navigator.serviceWorker.register('./sw.js')
-        .then(function(reg) {
-          log('Service Worker 注册成功: ' + reg.scope, 'info');
-          const sw = reg.installing || reg.waiting || reg.active;
-          if (sw) {
-            if (sw.state === 'activated') {
-              updateSwStatus('success', '已注册');
-              btnConnect.disabled = false;
-            } else {
-              sw.addEventListener('statechange', function() {
-                log('Service Worker 状态: ' + sw.state, 'info');
-                if (sw.state === 'activated') {
-                  updateSwStatus('success', '已注册');
-                  btnConnect.disabled = false;
-                }
-              });
-            }
+    btnRegister.addEventListener('click', async function() {
+      try {
+        log('正在检查 Service Worker...', 'info');
+        
+        // 检查当前注册的 SW 是否是 sw.js
+        let reg = await navigator.serviceWorker.getRegistration();
+        if (reg && reg.active) {
+          const currentSW = reg.active.scriptURL;
+          if (!currentSW.endsWith('sw.js')) {
+            log('检测到其他 SW: ' + currentSW.split('/').pop() + '，正在切换...', 'info');
+            await reg.unregister();
+            reg = null;
           }
-        })
-        .catch(function(err) {
-          log('注册失败: ' + err.message, 'error');
-          updateSwStatus('error', '注册失败');
-        });
+        }
+        
+        log('正在注册 Service Worker...', 'info');
+        reg = await navigator.serviceWorker.register('./sw.js');
+        log('Service Worker 注册成功: ' + reg.scope, 'info');
+        
+        const sw = reg.installing || reg.waiting || reg.active;
+        if (sw) {
+          if (sw.state === 'activated') {
+            updateSwStatus('success', '已注册');
+            btnConnect.disabled = false;
+          } else {
+            sw.addEventListener('statechange', function() {
+              log('Service Worker 状态: ' + sw.state, 'info');
+              if (sw.state === 'activated') {
+                updateSwStatus('success', '已注册');
+                btnConnect.disabled = false;
+              }
+            });
+          }
+        }
+      } catch(err) {
+        log('注册失败: ' + err.message, 'error');
+        updateSwStatus('error', '注册失败');
+      }
     });
     
     // Connect channel

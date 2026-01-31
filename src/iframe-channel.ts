@@ -1,6 +1,7 @@
 import * as urlUtil from './url'
 import BaseChannel, { ChannelOption, generateUniqueId } from './base-channel'
 import { Methods } from './interface'
+import { cloneMessage } from './utils'
 
 /**
  * Configuration options for IframeChannel.
@@ -146,8 +147,8 @@ export default class IframeChannel<TMethods extends Methods = Methods> extends B
   protected sendRawMessage(data: Record<string, unknown>, transferables?: Transferable[]): void {
     try {
       if (this.isSon) {
-        // JSON serialization prevents "could not be cloned" errors from functions
-        const messageData = JSON.parse(JSON.stringify(data))
+        // Clone message to prevent "could not be cloned" errors from functions
+        const messageData = cloneMessage(data)
         if (transferables && transferables.length > 0) {
           parent.postMessage(messageData, this.targetOrigin, transferables)
         } else {

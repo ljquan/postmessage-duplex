@@ -36,6 +36,15 @@ interface Communicator<TMethods extends Methods = Methods> {
   /** 取消订阅 */
   unSubscribe(cmdname: string): this
   
+  /** 发送广播消息（单向，无响应） */
+  broadcast(cmdname: string, data?: any, options?: BroadcastOptions): void
+  
+  /** 注册广播处理器 */
+  onBroadcast(cmdname: string, callback: (data: { cmdname: string; data?: any }) => void): this
+  
+  /** 移除广播处理器 */
+  offBroadcast(cmdname: string): this
+  
   /** 销毁通道 */
   destroy(): void
 }
@@ -157,6 +166,45 @@ interface PublishOptions {
 }
 ```
 
+## BroadcastOptions
+
+广播消息的选项。
+
+```typescript
+interface BroadcastOptions {
+  /** 
+   * 可传输对象数组
+   * 用于高效传输 ArrayBuffer 等大数据
+   * 注意：传输后原对象会被清空
+   */
+  transferables?: Transferable[]
+}
+```
+
+**说明：**
+- 广播消息没有 `timeout` 选项，因为广播不等待响应
+- 使用 `transferables` 可以高效传输大数据
+
+## BroadcastMessage
+
+广播消息数据结构（内部使用）。
+
+```typescript
+interface BroadcastMessage {
+  /** 命令/事件名称 */
+  cmdname: string
+  
+  /** 广播数据 */
+  data?: any
+  
+  /** 时间戳 */
+  time?: number
+  
+  /** 标识这是广播消息 */
+  _broadcast: true
+}
+```
+
 ## PostCallback
 
 消息回调函数类型。
@@ -247,6 +295,175 @@ interface Methods {
 
 type Return = MethodReturn<Methods['getData']>
 // { name: string }
+```
+
+## Hub API 类型（Service Worker）
+
+### ClientMeta
+
+客户端元数据，存储已连接客户端的信息。
+
+```typescript
+interface ClientMeta {
+  /** 浏览器分配的唯一客户端 ID */
+  clientId: string
+  
+  /** 应用类型（如 'cart', 'user'），用于按类型广播 */
+  appType?: string
+  
+  /** 人类可读的应用名称 */
+  appName?: string
+  
+  /** ISO 格式的连接时间戳 */
+  connectedAt: string
+}
+```
+
+### HubOptions
+
+Service Worker Hub 初始化选项。
+
+```typescript
+interface HubOptions {
+  /** SW 版本号，用于 sw-activated 通知 */
+  version?: string
+  
+  /** 客户端连接时的回调 */
+  onClientConnect?: (clientId: string, meta: ClientMeta) => void
+  
+  /** 客户端断开时的回调 */
+  onClientDisconnect?: (clientId: string) => void
+  
+  /** 清理不活跃客户端的间隔（毫秒），默认 30000 */
+  cleanupInterval?: number
+}
+```
+
+**示例：**
+
+```typescript
+ServiceWorkerChannel.setupHub({
+  version: '1.0.0',
+  onClientConnect: (clientId, meta) => {
+    console.log(`${meta.appName} connected (type: ${meta.appType})`)
+  },
+  onClientDisconnect: (clientId) => {
+    console.log('Client disconnected:', clientId)
+  },
+  cleanupInterval: 60000
+})
+```
+
+### PageChannelOptions
+
+页面端 `createFromPage()` 的配置选项。
+
+```typescript
+interface PageChannelOptions {
+  /** 请求超时时间（毫秒），默认 5000 */
+  timeout?: number
+  
+  /** 应用类型，用于 broadcastToType */
+  appType?: string
+  
+  /** 人类可读的应用名称 */
+  appName?: string
+  
+  /** SW 更新时是否自动重连，默认 true */
+  autoReconnect?: boolean
+  
+  /** 
+   * Service Worker 脚本 URL
+   * 提供则自动注册 SW
+   * @example '/sw.js' 或 './service-worker.js'
+   */
+  swUrl?: string
+  
+  /**
+   * Service Worker 作用域，仅在 swUrl 提供时有效
+   * @example '/app/' 或 './'
+   */
+  swScope?: string
+}
+```
+
+**示例：**
+
+```typescript
+// 一键初始化
+const channel = await ServiceWorkerChannel.createFromPage({
+  swUrl: '/sw.js',
+  appType: 'cart',
+  appName: '购物车模块',
+  autoReconnect: true,
+  timeout: 10000
+})
+```
+
+### GlobalSubscribeHandler
+
+全局消息处理器函数类型（Hub 模式使用）。
+
+```typescript
+type GlobalSubscribeHandler = (context: {
+  /** 请求数据 */
+  data: Record<string, any>
+  
+  /** 发送者客户端 ID */
+  clientId: string
+  
+  /** 客户端元数据（如已注册） */
+  clientMeta?: ClientMeta
+}) => any | Promise<any>
+```
+
+**示例：**
+
+```typescript
+// 同步处理器
+ServiceWorkerChannel.subscribeGlobal('ping', ({ data, clientId, clientMeta }) => {
+  console.log(`Ping from ${clientMeta?.appName}`)
+  return { pong: true }
+})
+
+// 异步处理器
+ServiceWorkerChannel.subscribeGlobal('fetchData', async ({ data }) => {
+  const response = await fetch(data.url)
+  return await response.json()
+})
+```
+
+### UnknownClientCallback
+
+当收到来自未知客户端的消息时调用的回调函数类型。
+
+```typescript
+type UnknownClientCallback = (
+  clientId: string,
+  event: ExtendableMessageEvent | MessageEvent
+) => void
+```
+
+**参数：**
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `clientId` | `string` | 发送消息的客户端 ID |
+| `event` | `ExtendableMessageEvent \| MessageEvent` | 原始消息事件 |
+
+**用途：**
+
+当 Service Worker 重启后，客户端的 channel 可能仍然存在，但 SW 端的 channel 已丢失。
+这个回调允许你在这种情况下自动创建 channel 并处理消息。
+
+**示例：**
+
+```typescript
+// 手动使用（通常 setupHub 已自动处理）
+ServiceWorkerChannel.enableGlobalRouting((clientId, event) => {
+  const channel = ServiceWorkerChannel.createFromWorker(clientId)
+  channel.handleMessage(event as MessageEvent)
+})
 ```
 
 ## 使用示例

@@ -28,7 +28,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Global Message Routing for Service Worker**: New static methods for efficient multi-client communication
+  - `ServiceWorkerChannel.enableGlobalRouting(callback)` - Enable global message routing with a single listener
+  - `ServiceWorkerChannel.disableGlobalRouting()` - Disable global routing
+  - `ServiceWorkerChannel.hasChannel(clientId)` - Check if a channel exists for a client
+  - `ServiceWorkerChannel.getChannelByClientId(clientId)` - Get channel instance by client ID
+  - `ServiceWorkerChannel.getChannelCount()` - Get the number of active channels
+- **Message Recovery**: New instance method `handleMessage(event)` for manually processing messages
+  - Useful when creating channels after receiving a message (e.g., SW restart scenario)
+- **UnknownClientCallback type**: Callback type for handling messages from unknown clients
+
 ### Changed
 
 - Upgraded to Rollup 4, TypeScript 5, Jest 29 for better performance
 - Build outputs now correctly match package.json exports (ESM/CJS/UMD)
+
+### Fixed
+
+- **Multi-client message routing**: Fixed issue where messages could be lost when Service Worker restarts
+  - Previously, if SW restarted while clients were connected, their messages would not be processed
+  - Now, with `enableGlobalRouting()`, messages from unknown clients can be automatically handled

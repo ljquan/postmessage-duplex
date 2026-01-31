@@ -4,34 +4,20 @@ import {
   ReturnCode,
   BaseChannel
 } from '../src/index'
-
-// Mock console to suppress logs during tests
-const mockConsole = {
-  log: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-  info: jest.fn()
-}
-
-// Helper: 获取 Map 的第一个值
-function getFirstValue<T>(map: Map<string, T>): T | undefined {
-  return map.values().next().value
-}
-
-// Helper: 将 Map 转为数组
-function mapToArray<T>(map: Map<string, T>): T[] {
-  return Array.from(map.values())
-}
-
-// PostTask 类型
-interface PostTask {
-  data: {
-    requestId: string
-    cmdname: string
-    data?: Record<string, any>
-  }
-  prm: Promise<any>
-}
+import {
+  mockConsole,
+  resetMockConsole,
+  setupIframeDOM,
+  setupReferrer,
+  getFirstValue,
+  mapToArray,
+  PostTask,
+  createMessageEvent,
+  createResponseMessage,
+  createRequestMessage,
+  createReadyMessage,
+  createBroadcastMessage
+} from './helpers'
 
 /**
  * IframeChannel 测试
@@ -39,12 +25,9 @@ interface PostTask {
 describe('IframeChannel', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    // Reset referrer
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    resetMockConsole()
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   afterEach(() => {
@@ -74,10 +57,7 @@ describe('IframeChannel', () => {
     })
 
     it('子页面模式：origin 不匹配时抛出错误', () => {
-      Object.defineProperty(document, 'referrer', {
-        value: 'http://other-domain.com/',
-        configurable: true
-      })
+      setupReferrer('http://other-domain.com/')
 
       expect(() => {
         new IframeChannel('http://localhost/')
@@ -528,8 +508,24 @@ describe('ServiceWorkerChannel', () => {
   })
 
   describe('消息监听', () => {
-    it('Worker 端应该添加消息监听器', () => {
+    it('全局路由模式下应该使用全局监听器', () => {
+      // 默认启用全局路由，所以会设置全局监听器
       const channel = ServiceWorkerChannel.createFromWorker('client-id', {
+        log: mockConsole
+      })
+      
+      // 全局路由启用时，会在首次创建 channel 时添加全局监听器
+      // 注意：全局监听器由 ServiceWorkerChannel 静态方法管理
+      expect(ServiceWorkerChannel.hasChannel('client-id')).toBe(true)
+      
+      channel.destroy()
+    })
+
+    it('禁用全局路由时应该添加独立监听器', () => {
+      // 禁用全局路由
+      ServiceWorkerChannel.disableGlobalRouting()
+      
+      const channel = ServiceWorkerChannel.createFromWorker('client-id-2', {
         log: mockConsole
       })
       
@@ -539,18 +535,14 @@ describe('ServiceWorkerChannel', () => {
       )
       
       channel.destroy()
-    })
-
-    it('destroy 应该移除消息监听器', () => {
-      const channel = ServiceWorkerChannel.createFromWorker('client-id', {
-        log: mockConsole
-      })
-      channel.destroy()
       
       expect(mockRemoveEventListener).toHaveBeenCalledWith(
         'message',
         expect.any(Function)
       )
+      
+      // 恢复全局路由
+      ServiceWorkerChannel.enableGlobalRouting()
     })
   })
 
@@ -625,11 +617,8 @@ describe('BaseChannel', () => {
 describe('集成测试', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('多个通道应该独立工作', () => {
@@ -705,11 +694,8 @@ describe('模块导出', () => {
  */
 describe('边界情况', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('publish 空字符串 cmdname 应该正常工作', () => {
@@ -774,11 +760,8 @@ describe('边界情况', () => {
  */
 describe('点对点通信', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('ready 消息应该包含 _senderKey', () => {
@@ -919,11 +902,8 @@ describe('点对点通信', () => {
  */
 describe('onMessage 处理器', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('应该忽略来自错误 origin 的消息', async () => {
@@ -1190,11 +1170,8 @@ describe('版本信息', () => {
  */
 describe('消息队列', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('ready 后应该执行队列中的消息', async () => {
@@ -1236,11 +1213,8 @@ describe('消息队列', () => {
  */
 describe('超时处理', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
     jest.useFakeTimers()
   })
 
@@ -1278,11 +1252,8 @@ describe('超时处理', () => {
  */
 describe('安全特性', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   describe('消息大小限制', () => {
@@ -1477,11 +1448,8 @@ describe('安全特性', () => {
  */
 describe('subscribeOnce() 一次性订阅', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('subscribeOnce 回调只应执行一次', async () => {
@@ -1596,11 +1564,8 @@ describe('subscribeOnce() 一次性订阅', () => {
  */
 describe('连接生命周期增强', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   it('重复 destroy 不应报错', () => {
@@ -1678,11 +1643,8 @@ describe('连接生命周期增强', () => {
 describe('并发请求', () => {
   beforeEach(() => {
     jest.useFakeTimers()
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   afterEach(() => {
@@ -1839,11 +1801,8 @@ describe('并发请求', () => {
 describe('PublishOptions', () => {
   beforeEach(() => {
     jest.useFakeTimers()
-    document.body.innerHTML = '<iframe id="iframe" src="http://localhost/"/>'
-    Object.defineProperty(document, 'referrer', {
-      value: 'http://localhost/',
-      configurable: true
-    })
+    setupIframeDOM()
+    setupReferrer('http://localhost/')
   })
 
   afterEach(() => {

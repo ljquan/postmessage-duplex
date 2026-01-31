@@ -56,16 +56,34 @@ channel.destroy()
 ### ServiceWorkerChannel Usage
 
 ```typescript
-// PAGE SIDE
+// PAGE SIDE - Basic usage
 const channel = await ServiceWorkerChannel.createFromPage()
 const response = await channel.publish('fetchData', { url: '/api' })
 
-// SERVICE WORKER SIDE (in sw.js)
-const channel = ServiceWorkerChannel.createFromEvent(event)
-channel.subscribe('fetchData', async ({ data }) => {
+// PAGE SIDE - With Hub integration (recommended for multi-client)
+const channel = await ServiceWorkerChannel.createFromPage({
+  swUrl: '/sw.js',       // Auto-register SW
+  appType: 'cart',       // For broadcastToType
+  appName: 'Shopping Cart',
+  autoReconnect: true    // Auto-reconnect on SW update
+})
+
+// SERVICE WORKER SIDE - Using Hub API (recommended)
+importScripts('./postmessage-duplex.umd.js')
+const { ServiceWorkerChannel } = PostMessageChannel
+
+ServiceWorkerChannel.setupHub({ version: '1.0.0' })
+
+ServiceWorkerChannel.subscribeGlobal('fetchData', async ({ data, clientId }) => {
   const res = await fetch(data.url)
   return await res.json()
 })
+
+// Broadcast to all clients
+await ServiceWorkerChannel.broadcastToAll('notification', { msg: 'Hello' })
+
+// Broadcast to specific app type
+await ServiceWorkerChannel.broadcastToType('cart', 'update', { items: 3 })
 ```
 
 ### Response Handling Pattern
@@ -112,6 +130,28 @@ const response = await channel.call('getUser', { id: 123 })
 // response.data is typed as { name: string; email: string } | undefined
 ```
 
+### Broadcast (One-way Communication)
+
+```typescript
+// SEND BROADCAST (fire-and-forget, no response)
+channel.broadcast('notification', { type: 'update', message: 'Data changed' })
+
+// RECEIVE BROADCAST
+channel.onBroadcast('notification', ({ data }) => {
+  console.log('Received:', data.message)
+  // No return value - broadcasts are one-way
+})
+
+// REMOVE BROADCAST HANDLER
+channel.offBroadcast('notification')
+```
+
+**Key differences from publish/subscribe:**
+- `broadcast()` does not return a Promise (fire-and-forget)
+- `onBroadcast()` handler does not return a value
+- No timeout handling for broadcasts
+- Ideal for notifications, events, and one-way data pushes
+
 ### Debugging
 
 ```typescript
@@ -154,13 +194,18 @@ When generating code that uses this library:
 ```
 src/
 ├── index.ts           # Public exports
-├── base-channel.ts    # Base class (internal)
+├── base-channel.ts    # Base class with core messaging logic
 ├── iframe-channel.ts  # IframeChannel class
 ├── sw-channel.ts      # ServiceWorkerChannel class
-├── interface.ts       # Type definitions
+├── sw-hub.ts          # ServiceWorkerHub for multi-client management
+├── interface.ts       # Type definitions (ClientMeta, HubOptions, etc.)
+├── utils.ts           # Shared utilities (cloneMessage, generateUniqueId)
 ├── errors.ts          # ChannelError, ErrorCode
+├── validators.ts      # Message validation utilities
+├── event-emitter.ts   # Event emitter for lifecycle events
 ├── debugger.ts        # enableDebugger()
-└── ...                # Other internal modules
+├── rate-limiter.ts    # Rate limiting for message sending
+└── timeout-manager.ts # Timeout management for requests
 ```
 
 ## Common Mistakes to Avoid
@@ -171,6 +216,9 @@ channel.publish('cmd', data)  // Fire and forget - won't get response
 
 // ✅ CORRECT: Await the response
 const response = await channel.publish('cmd', data)
+
+// ✅ ALSO CORRECT: Use broadcast for one-way messages
+channel.broadcast('notification', data)  // Fire and forget by design
 
 // ❌ WRONG: Using data without checking ret
 const data = response.data  // May be undefined!
@@ -201,4 +249,76 @@ channel.subscribe('cmd', ({ data }) => {
 channel.subscribe('cmd', ({ data }) => {
   return processedData  // This becomes response.data
 })
+
+// ❌ WRONG: Using subscribeGlobal without setupHub
+ServiceWorkerChannel.subscribeGlobal('cmd', handler)  // Won't work!
+
+// ✅ CORRECT: Initialize Hub first
+ServiceWorkerChannel.setupHub({ version: '1.0.0' })
+ServiceWorkerChannel.subscribeGlobal('cmd', handler)
+
+// ❌ WRONG: Expecting immediate broadcast after SW update
+// Clients need time to re-register after SW update
+
+// ✅ CORRECT: Use autoReconnect and handle timing
+const channel = await ServiceWorkerChannel.createFromPage({
+  autoReconnect: true  // Handles SW updates automatically
+})
 ```
+
+## Testing Guidelines
+
+### Service Worker Testing
+
+```typescript
+// ❌ WRONG: Expecting individual message listeners with global routing
+const channel = ServiceWorkerChannel.createFromWorker('client-id')
+expect(mockAddEventListener).toHaveBeenCalledWith('message', ...)  // Fails!
+
+// ✅ CORRECT: Global routing shares a single listener
+// Individual channels register in the global router instead
+expect(ServiceWorkerChannel.hasChannel('client-id')).toBe(true)
+
+// ✅ CORRECT: Disable global routing to test individual listeners
+ServiceWorkerChannel.disableGlobalRouting()
+const channel = ServiceWorkerChannel.createFromWorker('client-id')
+expect(mockAddEventListener).toHaveBeenCalledWith('message', ...)  // Works!
+channel.destroy()
+ServiceWorkerChannel.enableGlobalRouting()  // Restore default
+```
+
+### Mock Setup for SW Tests
+
+```typescript
+// Mock the Service Worker global scope
+let mockSelf: any
+let mockAddEventListener: jest.Mock
+let mockRemoveEventListener: jest.Mock
+
+beforeEach(() => {
+  mockAddEventListener = jest.fn()
+  mockRemoveEventListener = jest.fn()
+  
+  mockSelf = {
+    addEventListener: mockAddEventListener,
+    removeEventListener: mockRemoveEventListener,
+    clients: {
+      get: jest.fn().mockResolvedValue(null),
+      matchAll: jest.fn().mockResolvedValue([])
+    }
+  }
+  
+  ;(globalThis as any).self = mockSelf
+})
+
+afterEach(() => {
+  // Restore original self if needed
+})
+```
+
+### Key Testing Notes
+
+1. **Global routing is ON by default** - `useGlobalRouting = true`
+2. **Static state persists between tests** - Reset with `ServiceWorkerChannel.disableGlobalRouting()` then `enableGlobalRouting()`
+3. **Hub tests don't need full SW mock** - Focus on internal logic with mocked HubChannel interfaces
+4. **Use Jest fake timers for timeout tests** - `jest.useFakeTimers()` / `jest.useRealTimers()`

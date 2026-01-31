@@ -120,15 +120,21 @@ pnpm add postmessage-duplex
 import { ServiceWorkerChannel } from 'postmessage-duplex'
 
 async function initSW() {
-  // 注册 Service Worker
-  await navigator.serviceWorker.register('./sw.js')
-  
-  // 创建通道
-  const channel = await ServiceWorkerChannel.createFromPage()
+  // 一键初始化：自动注册 SW、建立连接、处理重连
+  const channel = await ServiceWorkerChannel.createFromPage({
+    swUrl: './sw.js',     // 自动注册 SW
+    appType: 'myApp',     // 应用类型（用于按类型广播）
+    appName: 'My App'     // 应用名称
+  })
   
   // 发送请求
   const response = await channel.publish('fetchData', { url: '/api/data' })
   console.log('数据:', response.data)
+  
+  // 接收广播
+  channel.onBroadcast('notification', ({ data }) => {
+    console.log('收到通知:', data)
+  })
 }
 
 initSW()
@@ -137,36 +143,22 @@ initSW()
 **Service Worker 端 (sw.js)**
 
 ```javascript
-// Service Worker 端需要手动处理消息
-const channels = new Map()
+import { ServiceWorkerChannel } from 'postmessage-duplex'
 
-self.addEventListener('message', (event) => {
-  const clientId = event.source.id
-  
-  // 简单的消息处理
-  if (event.data.cmdname === 'fetchData') {
-    handleFetchData(event.data, event.source)
-  }
+// 一行代码初始化 Hub
+ServiceWorkerChannel.setupHub({ version: '1.0.0' })
+
+// 注册处理器（所有客户端共享）
+ServiceWorkerChannel.subscribeGlobal('fetchData', async ({ data }) => {
+  const response = await fetch(data.url)
+  return await response.json()
 })
 
-async function handleFetchData(request, client) {
-  try {
-    const response = await fetch(request.data.url)
-    const data = await response.json()
-    
-    client.postMessage({
-      requestId: request.requestId,
-      ret: 0,
-      data: data
-    })
-  } catch (error) {
-    client.postMessage({
-      requestId: request.requestId,
-      ret: -1,
-      msg: error.message
-    })
-  }
-}
+// 广播通知给所有客户端
+ServiceWorkerChannel.subscribeGlobal('notifyAll', async ({ data, clientId }) => {
+  const count = await ServiceWorkerChannel.broadcastToAll('notification', data, clientId)
+  return { sentCount: count }
+})
 ```
 
 ## 配置选项

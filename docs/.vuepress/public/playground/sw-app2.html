@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>应用2 - Service Worker 多页面通讯</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #3eaf7c 0%, #2d8f62 100%);
+      padding: 15px;
+      min-height: 100vh;
+    }
+    
+    .app-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+    
+    .app-header {
+      background: #3eaf7c;
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .app-title {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .app-id {
+      background: rgba(255,255,255,0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .status-badge.connected {
+      background: rgba(76, 175, 80, 0.3);
+    }
+    
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ffeb3b;
+    }
+    
+    .status-badge.connected .status-dot {
+      background: #4caf50;
+    }
+    
+    .app-body {
+      padding: 16px;
+    }
+    
+    .section {
+      margin-bottom: 16px;
+    }
+    
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #606266;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary { background: #3eaf7c; color: white; }
+    .btn-success { background: #4caf50; color: white; }
+    .btn-warning { background: #ff9800; color: white; }
+    .btn-info { background: #2196f3; color: white; }
+    
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    
+    input[type="text"] {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #dcdfe6;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+    
+    input[type="text"]:focus {
+      border-color: #3eaf7c;
+    }
+    
+    .log-container {
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 12px;
+      height: 180px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 11px;
+    }
+    
+    .log-item {
+      padding: 3px 0;
+      border-bottom: 1px solid #333;
+      line-height: 1.4;
+    }
+    
+    .log-item:last-child {
+      border-bottom: none;
+    }
+    
+    .log-time { color: #888; }
+    .log-send { color: #4ec9b0; }
+    .log-receive { color: #dcdcaa; }
+    .log-error { color: #f48771; }
+    .log-info { color: #9cdcfe; }
+    .log-broadcast { color: #c586c0; }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    
+    .stat-card {
+      background: #f5f7fa;
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #3eaf7c;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: #909399;
+      margin-top: 4px;
+    }
+    
+    .client-id {
+      font-size: 11px;
+      color: #909399;
+      word-break: break-all;
+      margin-top: 8px;
+      padding: 8px;
+      background: #f5f7fa;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <div class="app-header">
+      <div class="app-title">
+        <span>应用 2</span>
+        <span class="app-id">用户中心</span>
+      </div>
+      <div class="status-badge" id="status">
+        <span class="status-dot"></span>
+        <span>未连接</span>
+      </div>
+    </div>
+    
+    <div class="app-body">
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-value" id="msgSent">0</div>
+          <div class="stat-label">发送消息</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="msgReceived">0</div>
+          <div class="stat-label">接收消息</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="latency">-</div>
+          <div class="stat-label">延迟(ms)</div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">连接管理</div>
+        <div class="controls">
+          <button class="btn-primary" id="btnConnect">连接 SW</button>
+          <button class="btn-warning" id="btnDisconnect" disabled>断开</button>
+        </div>
+        <div class="client-id" id="clientId">Client ID: 等待连接...</div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">点对点通讯（请求-响应）</div>
+        <div class="input-group">
+          <input type="text" id="msgInput" placeholder="输入消息内容" value="来自应用2的消息">
+          <button class="btn-success" id="btnSend" disabled>发送(点对点)</button>
+        </div>
+        <div class="controls">
+          <button class="btn-info" id="btnPing" disabled>Ping</button>
+          <button class="btn-primary" id="btnGetUser" disabled>获取用户信息</button>
+          <button class="btn-primary" id="btnGetClients" disabled>查看已连接应用</button>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">广播通讯（单向无响应）</div>
+        <div class="controls">
+          <button class="btn-warning" id="btnBroadcast" disabled>广播给所有</button>
+          <button class="btn-warning" id="btnBroadcastToCart" disabled>广播给购物车</button>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">
+          通讯日志
+          <button onclick="clearLog()" style="float: right; padding: 2px 8px; font-size: 10px; background: #909399; color: white; border: none; border-radius: 3px; cursor: pointer;">清空</button>
+        </div>
+        <div class="log-container" id="logContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./postmessage-duplex.umd.js"></script>
+  <script>
+    const { ServiceWorkerChannel, ReturnCode } = PostMessageChannel;
+    
+    const APP_NAME = '应用2';
+    const APP_COLOR = '#3eaf7c';
+    
+    // DOM elements
+    const logContainer = document.getElementById('logContainer');
+    const statusEl = document.getElementById('status');
+    const clientIdEl = document.getElementById('clientId');
+    const msgSentEl = document.getElementById('msgSent');
+    const msgReceivedEl = document.getElementById('msgReceived');
+    const latencyEl = document.getElementById('latency');
+    
+    const btnConnect = document.getElementById('btnConnect');
+    const btnDisconnect = document.getElementById('btnDisconnect');
+    const btnSend = document.getElementById('btnSend');
+    const btnPing = document.getElementById('btnPing');
+    const btnGetUser = document.getElementById('btnGetUser');
+    const btnGetClients = document.getElementById('btnGetClients');
+    const btnBroadcast = document.getElementById('btnBroadcast');
+    const btnBroadcastToCart = document.getElementById('btnBroadcastToCart');
+    const msgInput = document.getElementById('msgInput');
+    
+    let channel = null;
+    let stats = { sent: 0, received: 0 };
+    
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+      logContainer.appendChild(item);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function clearLog() {
+      logContainer.innerHTML = '';
+      log('日志已清空', 'info');
+    }
+    
+    function updateStats() {
+      msgSentEl.textContent = stats.sent;
+      msgReceivedEl.textContent = stats.received;
+    }
+    
+    function updateStatus(connected, clientId = null) {
+      if (connected) {
+        statusEl.className = 'status-badge connected';
+        statusEl.innerHTML = '<span class="status-dot"></span><span>已连接</span>';
+        clientIdEl.textContent = 'Client ID: ' + (clientId || '已连接');
+      } else {
+        statusEl.className = 'status-badge';
+        statusEl.innerHTML = '<span class="status-dot"></span><span>未连接</span>';
+        clientIdEl.textContent = 'Client ID: 等待连接...';
+      }
+    }
+    
+    function setButtonsEnabled(enabled) {
+      btnSend.disabled = !enabled;
+      btnPing.disabled = !enabled;
+      btnGetUser.disabled = !enabled;
+      btnGetClients.disabled = !enabled;
+      btnBroadcast.disabled = !enabled;
+      btnBroadcastToCart.disabled = !enabled;
+      btnDisconnect.disabled = !enabled;
+      btnConnect.disabled = enabled;
+    }
+    
+    // 清理冲突的 Service Worker（如果存在其他 SW）
+    const SW_URL = './sw-multi.js';
+    
+    async function clearConflictingSW() {
+      if (!('serviceWorker' in navigator)) return;
+      
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && reg.active) {
+        const currentSW = reg.active.scriptURL;
+        if (!currentSW.endsWith('sw-multi.js')) {
+          log('检测到其他 SW: ' + currentSW.split('/').pop() + '，正在切换...', 'info');
+          await reg.unregister();
+        }
+      }
+    }
+    
+    // 连接函数 - 抽取为独立函数以支持自动连接
+    async function connect() {
+      if (channel) return; // 已连接
+      
+      try {
+        log('正在连接...', 'info');
+        
+        // 清理可能冲突的 SW
+        await clearConflictingSW();
+        
+        // 使用 swUrl 自动注册 SW，appType/appName 自动注册到 Hub
+        channel = await ServiceWorkerChannel.createFromPage({
+          swUrl: SW_URL,         // 自动注册 SW
+          timeout: 5000,
+          appType: 'user',
+          appName: APP_NAME,
+          autoReconnect: true    // 默认 true
+        });
+        
+        // 等待 ready 后获取 client ID
+        const pingResponse = await channel.publish('ping');
+        if (pingResponse.ret === ReturnCode.Success) {
+          const clientId = pingResponse.data.clientId || 'unknown';
+          updateStatus(true, clientId.slice(0, 8));
+          setButtonsEnabled(true);
+          log(`连接成功！Client ID: ${clientId.slice(0, 8)}, 活跃客户端: ${pingResponse.data.activeClients}`, 'info');
+          
+          // ========== 注册广播处理器 ==========
+          
+          // 全局广播消息
+          channel.onBroadcast('globalBroadcast', ({ data }) => {
+            stats.received++;
+            updateStats();
+            log(`📢 [广播] 来自 ${data.from}: ${data.message}`, 'broadcast');
+          });
+          
+          // 类型化通知广播
+          channel.onBroadcast('typedNotification', ({ data }) => {
+            stats.received++;
+            updateStats();
+            log(`🔔 [类型通知] ${data.title}: ${data.body} (目标: ${data.targetType})`, 'broadcast');
+          });
+          
+          // 购物车更新广播
+          channel.onBroadcast('cartUpdated', ({ data }) => {
+            stats.received++;
+            updateStats();
+            log(`🛒 [购物车广播] 商品数: ${data.itemCount}, 总价: ¥${data.total}`, 'broadcast');
+          });
+          
+          // 监听 SW 更新事件（用于 UI 提示）
+          channel.on('sw-activated', ({ version }) => {
+            log(`ℹ️ Service Worker 已更新到 v${version}，自动重新注册中...`, 'info');
+          });
+          
+          // ========== 点对点消息处理器 ==========
+          
+          channel.subscribe('directMessage', ({ data }) => {
+            stats.received++;
+            updateStats();
+            log(`💬 [点对点] 来自 ${data.from}: ${data.message}`, 'receive');
+            return { received: true, receivedAt: Date.now() };
+          });
+          
+        } else {
+          throw new Error(pingResponse.msg || '连接失败');
+        }
+      } catch (err) {
+        log('连接失败: ' + err.message, 'error');
+        updateStatus(false);
+      }
+    }
+    
+    // 连接按钮事件（保留用于手动重连）
+    btnConnect.addEventListener('click', connect);
+    
+    // 页面加载时自动连接
+    connect();
+    
+    // 断开
+    btnDisconnect.addEventListener('click', () => {
+      if (channel) {
+        channel.destroy();
+        channel = null;
+      }
+      updateStatus(false);
+      setButtonsEnabled(false);
+      log('已断开连接', 'info');
+    });
+    
+    // 发送消息
+    btnSend.addEventListener('click', async () => {
+      const message = msgInput.value.trim();
+      if (!message) return;
+      
+      stats.sent++;
+      updateStats();
+      log(`📤 发送消息: ${message}`, 'send');
+      
+      const response = await channel.publish('echo', {
+        message: message,
+        from: APP_NAME
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        log(`📥 回复: ${response.data.echoed}`, 'receive');
+      } else {
+        log(`⚠️ 发送失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    // Ping
+    btnPing.addEventListener('click', async () => {
+      const start = Date.now();
+      stats.sent++;
+      updateStats();
+      log('📤 Ping...', 'send');
+      
+      const response = await channel.publish('ping');
+      const latency = Date.now() - start;
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        latencyEl.textContent = latency;
+        log(`📥 Pong! 延迟: ${latency}ms`, 'receive');
+      } else {
+        log(`⚠️ Ping 失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    // 获取用户信息
+    btnGetUser.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      log('📤 获取用户信息...', 'send');
+      
+      const response = await channel.publish('getUserInfo', { userId: 'user_001' });
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        const user = response.data;
+        log(`📥 用户信息:`, 'receive');
+        log(`   姓名: ${user.name}`, 'receive');
+        log(`   邮箱: ${user.email}`, 'receive');
+        log(`   VIP等级: ${user.vipLevel}`, 'receive');
+        log(`   积分: ${user.points}`, 'receive');
+      } else {
+        log(`⚠️ 获取失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    // 查看已连接的客户端
+    btnGetClients.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      log('📤 获取已连接应用列表...', 'send');
+      
+      const response = await channel.publish('getClients');
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        const { clients, total } = response.data;
+        log(`📥 共 ${total} 个应用已连接:`, 'receive');
+        clients.forEach(c => {
+          const marker = c.isCurrentClient ? '(当前)' : '';
+          log(`   - ${c.appName} [${c.appType}] ${marker}`, 'receive');
+        });
+      } else {
+        log(`⚠️ 获取失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    // 广播消息（发送给所有客户端）
+    btnBroadcast.addEventListener('click', async () => {
+      const message = msgInput.value.trim() || '来自应用2的广播';
+      stats.sent++;
+      updateStats();
+      log(`📤 广播消息给所有客户端: ${message}`, 'send');
+      
+      // 通过 SW 转发广播
+      const response = await channel.publish('broadcastToAll', {
+        message: message,
+        from: APP_NAME
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        log(`✅ 广播已发送给 ${response.data.clientCount} 个客户端`, 'info');
+      } else {
+        log(`⚠️ 广播失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    // 广播给购物车应用（按类型筛选）
+    btnBroadcastToCart.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      log('📤 广播通知给购物车应用...', 'send');
+      
+      const response = await channel.publish('broadcastToType', {
+        targetType: 'cart',
+        eventName: 'typedNotification',
+        title: '用户中心消息',
+        body: '您的会员等级已更新',
+        from: APP_NAME
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        const d = response.data;
+        if (d.sentCount > 0) {
+          log(`✅ 已广播给 ${d.sentCount} 个购物车应用`, 'info');
+        } else {
+          log(`⚠️ 没有找到购物车应用 (共${d.totalClients}个客户端，可能正在重新连接)`, 'info');
+        }
+        if (d.checkedClients) {
+          d.checkedClients.forEach(c => {
+            log(`   - ${c.id}... type:${c.info} self:${c.isSelf} ch:${c.hasChannel}`, 'info');
+          });
+        }
+      } else {
+        log(`⚠️ 广播失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    // 页面加载完成
+    log(`${APP_NAME} 已加载，点击"连接 SW"开始`, 'info');
+    log('提示: 点对点通讯使用 publish/subscribe，广播使用 broadcast/onBroadcast', 'info');
+  </script>
+</body>
+</html>

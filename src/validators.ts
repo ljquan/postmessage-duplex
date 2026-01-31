@@ -7,6 +7,7 @@
  */
 
 import { PostRequest, PostResponse, ReturnCode } from './interface'
+import { safeSerialize } from './utils'
 
 /**
  * Internal channel message structure.
@@ -19,6 +20,8 @@ export interface ChannelMessage extends Partial<PostRequest>, Partial<PostRespon
   msg?: string
   /** Timestamp */
   time?: number
+  /** Indicates this is a broadcast message (no response expected) */
+  _broadcast?: boolean
 }
 
 /**
@@ -103,13 +106,17 @@ export function isReadyMessage(m: ChannelMessage): boolean {
   return m.msg === 'ready'
 }
 
+export function isBroadcastMessage(m: ChannelMessage): boolean {
+  return m._broadcast === true && typeof m.cmdname === 'string'
+}
+
 export function sanitizeForLogging(m: ChannelMessage): Record<string, unknown> {
   const safe: Record<string, unknown> = {}
   for (const f of ['requestId', 'cmdname', 'ret', 'msg', 'time', '_senderKey']) {
     if (f in m) safe[f] = (m as Record<string, unknown>)[f]
   }
   if ('data' in m && m.data !== undefined) {
-    try { safe.data = JSON.parse(JSON.stringify(m.data)) } catch { safe.data = '[Unserializable]' }
+    safe.data = safeSerialize(m.data)
   }
   return safe
 }
@@ -127,6 +134,7 @@ export default {
   validateResponse,
   isResponseMessage,
   isReadyMessage,
+  isBroadcastMessage,
   sanitizeForLogging,
   estimateMessageSize
 }

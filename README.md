@@ -138,28 +138,31 @@ channel.subscribe('push', ({ data }) => {
 })
 ```
 
-**Service Worker Side:**
+**Service Worker Side (推荐使用全局路由):**
 
 ```typescript
 // sw.js
+import { ServiceWorkerChannel } from 'postmessage-duplex'
+
 const channels = new Map()
 
-self.addEventListener('message', (event) => {
-  const clientId = event.source.id
-  
-  if (!channels.has(clientId)) {
-    // 为每个客户端创建通道
-    const channel = createChannel(clientId)
-    
-    channel.subscribe('fetchData', async ({ data }) => {
-      const response = await fetch(data.url)
-      return await response.json()
-    })
-    
-    channels.set(clientId, channel)
+// 共享的消息处理器
+const subscribeMap = {
+  fetchData: async ({ data }) => {
+    const response = await fetch(data.url)
+    return await response.json()
   }
+}
+
+// 启用全局路由 - 自动处理 SW 重启后的消息
+ServiceWorkerChannel.enableGlobalRouting((clientId, event) => {
+  const channel = ServiceWorkerChannel.createFromWorker(clientId, { subscribeMap })
+  channels.set(clientId, channel)
+  channel.handleMessage(event) // 处理当前消息
 })
 ```
+
+> 💡 **全局路由的优势**: 当 Service Worker 重启后，客户端的消息可以被自动处理，无需重新连接。详见 [Service Worker 指南](https://ljquan.github.io/postmessage-duplex/guide/service-worker.html)。
 
 ## Framework Integration / 框架集成
 

@@ -7,6 +7,8 @@ import {
   PostFailedCallback,
   ReturnCode,
   PublishOptions,
+  BroadcastOptions,
+  BroadcastMessage,
   Methods,
   MethodParams,
   MethodReturn,
@@ -21,9 +23,14 @@ import {
   ChannelMessage,
   estimateMessageSize,
   isResponseMessage,
-  isReadyMessage
+  isReadyMessage,
+  isBroadcastMessage
 } from './validators'
 import { registerChannel, unregisterChannel } from './debugger'
+import { generateUniqueId } from './utils'
+
+// Re-export for backward compatibility
+export { generateUniqueId } from './utils'
 
 /**
  * Logger function signature.
@@ -87,31 +94,6 @@ export interface ChannelOption {
    * @default true
    */
   strictValidation?: boolean
-}
-
-/**
- * Generates a unique ID for channel identification.
- * Uses crypto.getRandomValues when available for better randomness.
- * @param prefix - Prefix string for the ID (e.g., 'iframe_', 'sw_')
- * @returns A unique identifier string
- * @example
- * const id = generateUniqueId('iframe_')
- * // Returns something like: 'iframe_m1abc123xyz_'
- */
-export function generateUniqueId(prefix: string): string {
-  const timestamp = Date.now().toString(36)
-  let random: string
-  
-  // Use crypto for better randomness when available
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    const array = new Uint32Array(2)
-    crypto.getRandomValues(array)
-    random = array[0].toString(36) + array[1].toString(36)
-  } else {
-    random = Math.floor(Math.random() * 1e10).toString(36)
-  }
-  
-  return `${prefix}${timestamp}${random}_`
 }
 
 /**
@@ -187,6 +169,9 @@ export default abstract class BaseChannel<TMethods extends Methods = Methods>
 
   /** Map of subscribed message handlers indexed by command name */
   protected subscribeMap = new Map<string, PostCallback>()
+
+  /** Map of broadcast handlers indexed by command name */
+  protected broadcastHandlers = new Map<string, (data: { cmdname: string; data?: Record<string, any> }) => void>()
 
   /** Request timeout duration in milliseconds */
   protected timeout: number
@@ -454,72 +439,139 @@ export default abstract class BaseChannel<TMethods extends Methods = Methods>
       isResponse: isResponseMessage(data)
     })
 
-    const { requestId, cmdname, msg, _senderKey } = data
+    const { requestId, cmdname } = data
 
-    // Check for pending callback (this is a response to our request)
+    // Route message to appropriate handler (early return pattern)
+    if (this.handleResponseMessage(data, requestId)) return
+    if (this.handleBroadcastMessage(data, cmdname)) return
+    if (await this.handleSubscriptionMessage(data, requestId, cmdname)) return
+    if (this.handleReadyMessage(data, requestId)) return
+    
+    // No handler registered
+    this.handleUnhandledMessage(data, requestId, cmdname)
+  }
+
+  /**
+   * Handles response messages (callbacks from our requests).
+   * @param data - The message data
+   * @param requestId - The request ID
+   * @returns true if this was a response message and was handled
+   * @private
+   */
+  private handleResponseMessage(data: ChannelMessage, requestId?: string): boolean {
     const callback = requestId ? this.callbackMap.get(requestId) : undefined
     
     if (callback && requestId) {
-      // Cancel the timeout for this request
       this.timeoutManager.remove(requestId)
       this.requestCmdMap.delete(requestId)
-      
       callback.resolve(data as unknown as PostResponse)
       this.deleteCallback(requestId)
-      return
+      return true
     }
+    return false
+  }
+
+  /**
+   * Handles broadcast messages (one-way, no response needed).
+   * @param data - The message data
+   * @param cmdname - The command name
+   * @returns true if this was a broadcast message and was handled
+   * @private
+   */
+  private handleBroadcastMessage(data: ChannelMessage, cmdname?: string): boolean {
+    if (!isBroadcastMessage(data)) return false
     
-    // Check for subscribed handler
-    if (cmdname) {
-      const handler = this.subscribeMap.get(cmdname)
-      if (handler) {
-        try {
-          const rsp = await handler(data as unknown as PostResponse)
-          this.sendMessage({
-            requestId,
-            ret: ReturnCode.Success,
-            data: rsp
-          })
-        } catch (e: unknown) {
-          const errorMessage = e instanceof Error ? e.message : String(e)
-          this.sendMessage({
-            req: data,
-            requestId,
-            ret: ReturnCode.ReceiverCallbackError,
-            msg: errorMessage || 'unknown error'
-          })
-          this.emit('error', {
-            error: e instanceof Error ? e : new Error(errorMessage),
-            context: `handler:${cmdname}`
-          })
-        }
-        return
-      }
-    }
-    
-    // Handle ready message for channel pairing
-    if (isReadyMessage(data)) {
-      if (_senderKey && !this.peerKey) {
-        this.peerKey = _senderKey
-        this.log('log', 'Point-to-point pairing established', 'self:', this.baseKey, 'peer:', this.peerKey)
-      }
-      this.isReady = true
-      this.executePosts()
-      
-      // Emit ready event
-      this.emit('ready', { peerKey: this.peerKey })
-      
-      if (!isResponseMessage(data)) {
-        this.sendMessage({
-          requestId,
-          ret: ReturnCode.Success,
-          msg: 'ready'
+    const broadcastHandler = cmdname ? this.broadcastHandlers.get(cmdname) : undefined
+    if (broadcastHandler) {
+      try {
+        broadcastHandler({ cmdname: cmdname!, data: data.data })
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : String(e)
+        this.emit('error', {
+          error: e instanceof Error ? e : new Error(errorMessage),
+          context: `broadcast:${cmdname}`
         })
       }
-      return
     }
+    return true  // Broadcast messages never send a response
+  }
+
+  /**
+   * Handles subscription messages (commands with registered handlers).
+   * @param data - The message data
+   * @param requestId - The request ID
+   * @param cmdname - The command name
+   * @returns true if this was a subscription message and was handled
+   * @private
+   */
+  private async handleSubscriptionMessage(data: ChannelMessage, requestId?: string, cmdname?: string): Promise<boolean> {
+    if (!cmdname) return false
     
-    // No handler registered
+    const handler = this.subscribeMap.get(cmdname)
+    if (!handler) return false
+    
+    try {
+      const rsp = await handler(data as unknown as PostResponse)
+      this.sendMessage({
+        requestId,
+        ret: ReturnCode.Success,
+        data: rsp
+      })
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      this.sendMessage({
+        req: data,
+        requestId,
+        ret: ReturnCode.ReceiverCallbackError,
+        msg: errorMessage || 'unknown error'
+      })
+      this.emit('error', {
+        error: e instanceof Error ? e : new Error(errorMessage),
+        context: `handler:${cmdname}`
+      })
+    }
+    return true
+  }
+
+  /**
+   * Handles ready messages for channel pairing.
+   * @param data - The message data
+   * @param requestId - The request ID
+   * @returns true if this was a ready message and was handled
+   * @private
+   */
+  private handleReadyMessage(data: ChannelMessage, requestId?: string): boolean {
+    if (!isReadyMessage(data)) return false
+    
+    const { _senderKey } = data
+    if (_senderKey && !this.peerKey) {
+      this.peerKey = _senderKey
+      this.log('log', 'Point-to-point pairing established', 'self:', this.baseKey, 'peer:', this.peerKey)
+    }
+    this.isReady = true
+    this.executePosts()
+    
+    // Emit ready event
+    this.emit('ready', { peerKey: this.peerKey })
+    
+    if (!isResponseMessage(data)) {
+      this.sendMessage({
+        requestId,
+        ret: ReturnCode.Success,
+        msg: 'ready'
+      })
+    }
+    return true
+  }
+
+  /**
+   * Handles messages with no registered handler.
+   * @param data - The message data
+   * @param requestId - The request ID
+   * @param cmdname - The command name
+   * @private
+   */
+  private handleUnhandledMessage(data: ChannelMessage, requestId?: string, cmdname?: string): void {
     if (requestId && !isResponseMessage(data)) {
       this.log('warn', 'No registered handler for:', cmdname || requestId)
       this.sendMessage({
@@ -657,13 +709,46 @@ export default abstract class BaseChannel<TMethods extends Methods = Methods>
     this.timeoutManager.remove(requestId)
   }
 
+  /** Flag to prevent multiple batch processing calls */
+  private isProcessingBatch = false
+
   /**
    * Sends all queued messages once channel becomes ready.
+   * Uses queueMicrotask for optimal batching performance.
+   * Handles both regular publish requests and broadcast messages.
    * @private
    */
   private executePosts(): void {
-    for (const task of this.postTasks.values()) {
-      this.doPublish(task.data, task.options)
+    if (this.postTasks.size === 0 || this.isProcessingBatch) return
+    
+    this.isProcessingBatch = true
+    
+    // Use queueMicrotask for optimal batching
+    queueMicrotask(() => {
+      this.processBatch()
+      this.isProcessingBatch = false
+    })
+  }
+
+  /**
+   * Processes a batch of queued messages.
+   * @private
+   */
+  private processBatch(): void {
+    // Create a snapshot of tasks to process
+    const tasksToProcess = Array.from(this.postTasks.entries())
+    
+    for (const [key, task] of tasksToProcess) {
+      // Skip if already processed (e.g., by destroy)
+      if (!this.postTasks.has(key)) continue
+      
+      if (key.startsWith('_broadcast_')) {
+        const broadcastData = task.data as unknown as BroadcastMessage
+        this.doBroadcast(broadcastData, task.options as BroadcastOptions)
+        this.postTasks.delete(key)
+      } else {
+        this.doPublish(task.data, task.options)
+      }
     }
   }
 
@@ -744,6 +829,107 @@ export default abstract class BaseChannel<TMethods extends Methods = Methods>
   }
 
   /**
+   * Broadcasts a one-way message without expecting a response.
+   * This is a fire-and-forget operation - no response or acknowledgment is returned.
+   * 
+   * @param cmdname - The command name to identify the broadcast type
+   * @param data - Optional payload data to send
+   * @param options - Optional broadcast options (transferables)
+   * 
+   * @example
+   * // Send a notification without waiting for response
+   * channel.broadcast('userLoggedIn', { userId: 123, timestamp: Date.now() })
+   * 
+   * // With transferable objects
+   * const buffer = new ArrayBuffer(1024)
+   * channel.broadcast('sendBuffer', { buffer }, { transferables: [buffer] })
+   */
+  broadcast(cmdname: string, data?: Record<string, unknown>, options?: BroadcastOptions): void {
+    // Check if channel has been destroyed
+    if (this.isDestroyed) {
+      this.log('warn', 'Cannot broadcast: channel has been destroyed')
+      return
+    }
+    
+    const broadcastData: BroadcastMessage = {
+      cmdname,
+      data,
+      time: Date.now(),
+      _broadcast: true
+    }
+    
+    this.log('log', 'broadcast', cmdname, this.isReady)
+    
+    if (this.isReady) {
+      this.doBroadcast(broadcastData, options)
+    } else {
+      // Queue broadcast for when channel is ready
+      // Use a unique key that won't conflict with requestIds
+      const broadcastKey = `_broadcast_${Date.now()}_${Math.random()}`
+      this.postTasks.set(broadcastKey, {
+        data: broadcastData as unknown as PostRequest,
+        prm: Promise.resolve({} as PostResponse), // Placeholder, not used
+        options: options as PublishOptions
+      })
+    }
+  }
+
+  /**
+   * Executes the broadcast operation.
+   * @param data - Broadcast data to send
+   * @param options - Optional broadcast options
+   * @private
+   */
+  private doBroadcast(data: BroadcastMessage, options?: BroadcastOptions): void {
+    try {
+      this.sendMessage(data as unknown as Record<string, unknown>, options?.transferables)
+      
+      // Emit broadcast sent event
+      this.emit('broadcast:sent', {
+        cmdname: data.cmdname
+      })
+    } catch (e) {
+      this.log('error', 'broadcast error', e, data)
+      this.emit('error', {
+        error: e instanceof Error ? e : new Error(String(e)),
+        context: 'broadcast'
+      })
+    }
+  }
+
+  /**
+   * Registers a handler for broadcast messages with the specified command name.
+   * Unlike subscribe, broadcast handlers do not return a response.
+   * 
+   * @param cmdname - The command name to listen for
+   * @param callback - Handler function called when broadcast is received
+   * @returns The channel instance for method chaining
+   * 
+   * @example
+   * channel.onBroadcast('userLoggedIn', ({ data }) => {
+   *   console.log('User logged in:', data.userId)
+   *   // No return value - broadcasts are one-way
+   * })
+   */
+  onBroadcast(cmdname: string, callback: (data: { cmdname: string; data?: Record<string, any> }) => void): Communicator<TMethods> {
+    if (this.broadcastHandlers.has(cmdname)) {
+      this.log('warn', `Broadcast handler for ${cmdname} already registered, replacing`)
+    }
+    this.broadcastHandlers.set(cmdname, callback)
+    return this
+  }
+
+  /**
+   * Removes the broadcast handler for the specified command name.
+   * @param cmdname - The command name to stop listening for
+   * @returns The channel instance for method chaining
+   */
+  offBroadcast(cmdname: string): Communicator<TMethods> {
+    this.broadcastHandlers.delete(cmdname)
+    return this
+  }
+
+  /**
    * Gets the peer's baseKey for debugging or validation.
    * @returns The peer's baseKey, or empty string if not yet paired
    */
@@ -809,6 +995,7 @@ export default abstract class BaseChannel<TMethods extends Methods = Methods>
     // Clean up resources
     this.removeMessageListener()
     this.subscribeMap.clear()
+    this.broadcastHandlers.clear()
     this.postTasks.clear()
     this.callbackMap.clear()
     this.requestCmdMap.clear()

@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Worker 多页面通讯演示 - postmessage-duplex</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    
+    .header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    
+    .nav {
+      background: white;
+      padding: 12px 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    
+    .nav a {
+      color: #667eea;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    
+    .nav a:hover {
+      text-decoration: underline;
+    }
+    
+    .nav .sep {
+      color: #ddd;
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .intro-panel {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    .intro-panel h2 {
+      font-size: 18px;
+      color: #2c3e50;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .intro-panel p {
+      color: #606266;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    
+    .feature-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    
+    .feature-item {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .feature-icon {
+      font-size: 20px;
+    }
+    
+    .feature-text {
+      font-size: 13px;
+      color: #606266;
+    }
+    
+    .apps-container {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    
+    @media (max-width: 900px) {
+      .apps-container {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .app-frame-container {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    .app-frame-header {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    
+    .app-frame-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2c3e50;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .app-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: white;
+    }
+    
+    .app-badge.app1 {
+      background: #667eea;
+    }
+    
+    .app-badge.app2 {
+      background: #3eaf7c;
+    }
+    
+    .app-frame-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .app-frame-actions button {
+      padding: 4px 12px;
+      border: 1px solid #ddd;
+      background: white;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .app-frame-actions button:hover {
+      border-color: #667eea;
+      color: #667eea;
+    }
+    
+    .app-iframe {
+      width: 100%;
+      height: 520px;
+      border: none;
+      display: block;
+    }
+    
+    .architecture-panel {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    
+    .architecture-panel h2 {
+      font-size: 18px;
+      color: #2c3e50;
+      margin-bottom: 16px;
+    }
+    
+    .architecture-diagram {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    .diagram-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 40px;
+      margin-bottom: 20px;
+    }
+    
+    .diagram-box {
+      padding: 16px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      min-width: 140px;
+    }
+    
+    .diagram-box.app1 {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+    }
+    
+    .diagram-box.app2 {
+      background: linear-gradient(135deg, #3eaf7c, #2d8f62);
+      color: white;
+    }
+    
+    .diagram-box.sw {
+      background: linear-gradient(135deg, #ff9800, #f57c00);
+      color: white;
+    }
+    
+    .diagram-arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #909399;
+      font-size: 12px;
+    }
+    
+    .diagram-arrow-line {
+      width: 2px;
+      height: 30px;
+      background: #ddd;
+      position: relative;
+    }
+    
+    .diagram-arrow-line::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid #ddd;
+    }
+    
+    .diagram-arrow-line.up::after {
+      top: 0;
+      bottom: auto;
+      border-top: none;
+      border-bottom: 8px solid #ddd;
+    }
+    
+    .diagram-label {
+      margin-top: 4px;
+    }
+    
+    .code-section {
+      margin-top: 20px;
+    }
+    
+    .code-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: -1px;
+    }
+    
+    .code-tab {
+      padding: 8px 16px;
+      background: #f0f2f5;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      border-radius: 6px 6px 0 0;
+      cursor: pointer;
+      font-size: 13px;
+      color: #606266;
+    }
+    
+    .code-tab.active {
+      background: #1e1e1e;
+      color: white;
+      border-color: #1e1e1e;
+    }
+    
+    .code-block {
+      background: #1e1e1e;
+      border-radius: 0 6px 6px 6px;
+      padding: 16px;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      color: #d4d4d4;
+      line-height: 1.5;
+    }
+    
+    .code-block .keyword { color: #569cd6; }
+    .code-block .string { color: #ce9178; }
+    .code-block .function { color: #dcdcaa; }
+    .code-block .comment { color: #6a9955; }
+    .code-block .variable { color: #9cdcfe; }
+    
+    .tips {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: #e7f3ff;
+      border-radius: 8px;
+      border-left: 4px solid #409eff;
+    }
+    
+    .tips-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #409eff;
+      margin-bottom: 8px;
+    }
+    
+    .tips-content {
+      font-size: 13px;
+      color: #606266;
+      line-height: 1.6;
+    }
+    
+    .tips-content ol {
+      margin-left: 20px;
+      margin-top: 8px;
+    }
+    
+    .tips-content li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Service Worker 多页面通讯演示</h1>
+    <p>一个 Service Worker 与多个独立应用页面之间的双工通讯</p>
+  </div>
+  
+  <div class="nav">
+    <a href="./parent.html">Iframe 示例</a>
+    <span class="sep">|</span>
+    <a href="./sw-demo.html">SW 基础示例</a>
+    <span class="sep">|</span>
+    <a href="./sw-multi-page.html" style="font-weight: bold;">SW 多页面示例</a>
+  </div>
+  
+  <div class="container">
+    <div class="intro-panel">
+      <h2>场景说明</h2>
+      <p>
+        在实际应用中，一个 Service Worker 可能需要同时服务多个不同的页面或应用模块。
+        本示例展示了如何使用 postmessage-duplex 实现：
+      </p>
+      <div class="feature-list">
+        <div class="feature-item">
+          <span class="feature-icon">🔗</span>
+          <span class="feature-text">多客户端独立连接</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">📡</span>
+          <span class="feature-text">消息广播机制</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">🎯</span>
+          <span class="feature-text">按类型定向推送</span>
+        </div>
+        <div class="feature-item">
+          <span class="feature-icon">🔄</span>
+          <span class="feature-text">双向实时通讯</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="apps-container">
+      <div class="app-frame-container">
+        <div class="app-frame-header">
+          <div class="app-frame-title">
+            <span class="app-badge app1">应用 1</span>
+            购物车模块
+          </div>
+          <div class="app-frame-actions">
+            <button onclick="reloadApp1()">刷新</button>
+            <button onclick="openApp1()">新窗口打开</button>
+          </div>
+        </div>
+        <iframe id="app1Frame" class="app-iframe" src="./sw-app1.html"></iframe>
+      </div>
+      
+      <div class="app-frame-container">
+        <div class="app-frame-header">
+          <div class="app-frame-title">
+            <span class="app-badge app2">应用 2</span>
+            用户中心
+          </div>
+          <div class="app-frame-actions">
+            <button onclick="reloadApp2()">刷新</button>
+            <button onclick="openApp2()">新窗口打开</button>
+          </div>
+        </div>
+        <iframe id="app2Frame" class="app-iframe" src="./sw-app2.html"></iframe>
+      </div>
+    </div>
+    
+    <div class="architecture-panel">
+      <h2>通讯架构</h2>
+      
+      <div class="architecture-diagram">
+        <div class="diagram-row">
+          <div class="diagram-box app1">应用 1<br><small>购物车模块</small></div>
+          <div class="diagram-box app2">应用 2<br><small>用户中心</small></div>
+        </div>
+        
+        <div class="diagram-row">
+          <div class="diagram-arrow">
+            <div class="diagram-arrow-line"></div>
+            <span class="diagram-label">点对点: publish/subscribe<br>广播: onBroadcast</span>
+          </div>
+          <div class="diagram-arrow">
+            <div class="diagram-arrow-line"></div>
+            <span class="diagram-label">点对点: publish/subscribe<br>广播: onBroadcast</span>
+          </div>
+        </div>
+        
+        <div class="diagram-row">
+          <div class="diagram-box sw">Service Worker<br><small>消息路由 & 广播中心</small></div>
+        </div>
+        
+        <div style="margin-top: 16px; display: flex; justify-content: center; gap: 30px; font-size: 12px; color: #666;">
+          <div><span style="color: #409eff;">●</span> 点对点: 请求→响应</div>
+          <div><span style="color: #e6a23c;">●</span> 广播: 单向通知</div>
+        </div>
+      </div>
+      
+      <div class="tips">
+        <div class="tips-title">操作指南</div>
+        <div class="tips-content">
+          <ol>
+            <li>分别点击两个应用的「连接 SW」按钮，建立与 Service Worker 的连接</li>
+            <li><strong>点对点通讯</strong>：使用 publish/subscribe，有响应，适合数据请求（如获取购物车、用户信息）</li>
+            <li><strong>广播通讯</strong>：使用 broadcast/onBroadcast，无响应，适合通知和事件推送</li>
+            <li>尝试「广播给所有」和「广播给XX」按钮，观察另一个应用是否收到消息</li>
+            <li>观察通讯日志，注意区分点对点消息和广播消息的不同</li>
+          </ol>
+        </div>
+      </div>
+      
+      <div class="code-section">
+        <div class="code-tabs">
+          <div class="code-tab active" onclick="showCodeTab(0, this)">点对点通讯</div>
+          <div class="code-tab" onclick="showCodeTab(1, this)">广播通讯</div>
+          <div class="code-tab" onclick="showCodeTab(2, this)">SW 端实现</div>
+          <div class="code-tab" onclick="showCodeTab(3, this)">对比总结</div>
+        </div>
+        
+        <div class="code-block" id="codeBlock">
+<span class="comment">// ========== 点对点通讯（请求-响应模式） ==========</span>
+
+<span class="comment">// 1. 连接 Service Worker</span>
+<span class="keyword">const</span> <span class="variable">channel</span> = <span class="keyword">await</span> <span class="variable">ServiceWorkerChannel</span>.<span class="function">createFromPage</span>()
+
+<span class="comment">// 2. 发送请求并等待响应（publish 返回 Promise）</span>
+<span class="keyword">const</span> <span class="variable">response</span> = <span class="keyword">await</span> <span class="variable">channel</span>.<span class="function">publish</span>(<span class="string">'getCart'</span>, { <span class="variable">userId</span>: <span class="string">'123'</span> })
+<span class="keyword">if</span> (<span class="variable">response</span>.<span class="variable">ret</span> === <span class="variable">ReturnCode</span>.<span class="variable">Success</span>) {
+  <span class="variable">console</span>.<span class="function">log</span>(<span class="string">'购物车数据:'</span>, <span class="variable">response</span>.<span class="variable">data</span>)
+}
+
+<span class="comment">// 3. 接收点对点消息（subscribe 需要返回响应）</span>
+<span class="variable">channel</span>.<span class="function">subscribe</span>(<span class="string">'directMessage'</span>, ({ <span class="variable">data</span> }) => {
+  <span class="variable">console</span>.<span class="function">log</span>(<span class="string">'收到消息:'</span>, <span class="variable">data</span>.<span class="variable">message</span>)
+  <span class="keyword">return</span> { <span class="variable">received</span>: <span class="keyword">true</span> }  <span class="comment">// 返回响应给发送方</span>
+})
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function reloadApp1() {
+      document.getElementById('app1Frame').src = './sw-app1.html';
+    }
+    
+    function reloadApp2() {
+      document.getElementById('app2Frame').src = './sw-app2.html';
+    }
+    
+    function openApp1() {
+      window.open('./sw-app1.html', '_blank');
+    }
+    
+    function openApp2() {
+      window.open('./sw-app2.html', '_blank');
+    }
+    
+    const codeSnippets = [
+      // 点对点通讯
+      `<span class="comment">// ========== 点对点通讯（请求-响应模式） ==========</span>
+
+<span class="comment">// 1. 连接 Service Worker</span>
+<span class="keyword">const</span> <span class="variable">channel</span> = <span class="keyword">await</span> <span class="variable">ServiceWorkerChannel</span>.<span class="function">createFromPage</span>()
+
+<span class="comment">// 2. 发送请求并等待响应（publish 返回 Promise）</span>
+<span class="keyword">const</span> <span class="variable">response</span> = <span class="keyword">await</span> <span class="variable">channel</span>.<span class="function">publish</span>(<span class="string">'getCart'</span>, { <span class="variable">userId</span>: <span class="string">'123'</span> })
+<span class="keyword">if</span> (<span class="variable">response</span>.<span class="variable">ret</span> === <span class="variable">ReturnCode</span>.<span class="variable">Success</span>) {
+  <span class="variable">console</span>.<span class="function">log</span>(<span class="string">'购物车数据:'</span>, <span class="variable">response</span>.<span class="variable">data</span>)
+}
+
+<span class="comment">// 3. 接收点对点消息（subscribe 需要返回响应）</span>
+<span class="variable">channel</span>.<span class="function">subscribe</span>(<span class="string">'directMessage'</span>, ({ <span class="variable">data</span> }) => {
+  <span class="variable">console</span>.<span class="function">log</span>(<span class="string">'收到消息:'</span>, <span class="variable">data</span>.<span class="variable">message</span>)
+  <span class="keyword">return</span> { <span class="variable">received</span>: <span class="keyword">true</span> }  <span class="comment">// 返回响应给发送方</span>
+})`,
+      
+      // 广播通讯
+      `<span class="comment">// ========== 广播通讯（单向无响应） ==========</span>
+
+<span class="comment">// 1. 使用 onBroadcast 接收广播（无需返回值）</span>
+<span class="variable">channel</span>.<span class="function">onBroadcast</span>(<span class="string">'globalBroadcast'</span>, ({ <span class="variable">data</span> }) => {
+  <span class="variable">console</span>.<span class="function">log</span>(<span class="string">'收到广播:'</span>, <span class="variable">data</span>.<span class="variable">message</span>)
+  <span class="comment">// 无需返回值 - 广播是单向的</span>
+})
+
+<span class="comment">// 2. 接收购物车更新广播</span>
+<span class="variable">channel</span>.<span class="function">onBroadcast</span>(<span class="string">'cartUpdated'</span>, ({ <span class="variable">data</span> }) => {
+  <span class="variable">console</span>.<span class="function">log</span>(<span class="string">'购物车已更新:'</span>, <span class="variable">data</span>.<span class="variable">itemCount</span>, <span class="string">'件商品'</span>)
+})
+
+<span class="comment">// 3. 移除广播监听</span>
+<span class="variable">channel</span>.<span class="function">offBroadcast</span>(<span class="string">'globalBroadcast'</span>)
+
+<span class="comment">// 注意：广播消息带有 _broadcast: true 标记</span>
+<span class="comment">// 由 Service Worker 负责发送给各客户端</span>`,
+      
+      // SW 端实现
+      `<span class="comment">// Service Worker：发送广播消息</span>
+<span class="variable">subscribeMap</span>[<span class="string">'broadcastToAll'</span>] = <span class="keyword">async</span> ({ <span class="variable">data</span> }) => {
+  <span class="keyword">const</span> <span class="variable">clients</span> = <span class="keyword">await</span> self.<span class="variable">clients</span>.<span class="function">matchAll</span>()
+  
+  <span class="keyword">for</span> (<span class="keyword">const</span> <span class="variable">client</span> <span class="keyword">of</span> <span class="variable">clients</span>) {
+    <span class="keyword">const</span> <span class="variable">channel</span> = <span class="variable">clientChannels</span>.<span class="function">get</span>(<span class="variable">client</span>.<span class="variable">id</span>)
+    <span class="keyword">if</span> (<span class="variable">channel</span>) {
+      <span class="comment">// 使用 _broadcast: true 标记广播消息</span>
+      <span class="keyword">await</span> <span class="variable">channel</span>.<span class="function">sendMessage</span>({
+        <span class="variable">cmdname</span>: <span class="string">'globalBroadcast'</span>,
+        <span class="variable">data</span>: { <span class="variable">message</span>: <span class="variable">data</span>.<span class="variable">message</span> },
+        <span class="variable">_broadcast</span>: <span class="keyword">true</span>  <span class="comment">// 关键标记</span>
+      })
+    }
+  }
+  <span class="keyword">return</span> { <span class="variable">clientCount</span>: <span class="variable">clients</span>.<span class="variable">length</span> }
+}
+
+<span class="comment">// 点对点请求处理（有响应）</span>
+<span class="variable">subscribeMap</span>[<span class="string">'getCart'</span>] = <span class="keyword">async</span> () => {
+  <span class="keyword">return</span> { <span class="variable">items</span>: [...], <span class="variable">total</span>: <span class="variable">99.99</span> }
+}`,
+      
+      // 对比总结
+      `<span class="comment">// ========== 点对点 vs 广播 对比 ==========</span>
+
+<span class="comment">// 点对点（publish/subscribe）</span>
+<span class="comment">// ✅ 有响应，适合数据请求</span>
+<span class="comment">// ✅ 支持超时处理</span>
+<span class="comment">// ✅ subscribe 处理器需要返回值</span>
+<span class="keyword">const</span> <span class="variable">res</span> = <span class="keyword">await</span> <span class="variable">channel</span>.<span class="function">publish</span>(<span class="string">'getData'</span>, {...})
+<span class="variable">channel</span>.<span class="function">subscribe</span>(<span class="string">'msg'</span>, () => { <span class="keyword">return</span> {...} })
+
+<span class="comment">// 广播（_broadcast/onBroadcast）</span>
+<span class="comment">// ✅ 无响应，适合通知和事件</span>
+<span class="comment">// ✅ fire-and-forget 模式</span>
+<span class="comment">// ✅ onBroadcast 处理器无需返回值</span>
+<span class="variable">channel</span>.<span class="function">onBroadcast</span>(<span class="string">'notify'</span>, ({ <span class="variable">data</span> }) => {
+  <span class="comment">// 处理通知，无需返回</span>
+})
+
+<span class="comment">// SW 发送广播时添加 _broadcast: true</span>
+<span class="variable">channel</span>.<span class="function">sendMessage</span>({ <span class="variable">cmdname</span>: <span class="string">'x'</span>, <span class="variable">_broadcast</span>: <span class="keyword">true</span> })`
+    ];
+    
+    function showCodeTab(index, tabEl) {
+      document.querySelectorAll('.code-tab').forEach(t => t.classList.remove('active'));
+      tabEl.classList.add('active');
+      document.getElementById('codeBlock').innerHTML = codeSnippets[index];
+    }
+  </script>
+</body>
+</html>

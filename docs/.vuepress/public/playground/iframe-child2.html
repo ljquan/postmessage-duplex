@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户中心模块 - Iframe 子页面</title>
+  <script src="./postmessage-duplex.umd.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      min-height: 100vh;
+      padding: 16px;
+      color: white;
+    }
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .app-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .app-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      background: rgba(255,255,255,0.2);
+    }
+    .status-badge.connected {
+      background: #28a745;
+    }
+    .stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .stat {
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+    }
+    .stat-label {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+    .section {
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      opacity: 0.9;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary { background: #007bff; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #0056b3; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-success:hover:not(:disabled) { background: #1e7e34; }
+    .btn-warning { background: #ffc107; color: #333; }
+    .btn-warning:hover:not(:disabled) { background: #e0a800; }
+    .btn-info { background: #17a2b8; color: white; }
+    .btn-info:hover:not(:disabled) { background: #138496; }
+    .log-container {
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+      padding: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-family: Monaco, Consolas, monospace;
+      font-size: 11px;
+    }
+    .log-item {
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .log-item:last-child { border-bottom: none; }
+    .log-time { opacity: 0.6; }
+    .log-send { color: #90EE90; }
+    .log-receive { color: #87CEEB; }
+    .log-broadcast { color: #FFD700; }
+    .log-error { color: #FF6B6B; }
+    .log-info { color: #DDA0DD; }
+  </style>
+</head>
+<body>
+  <div class="app-header">
+    <div class="app-title">
+      <span class="app-badge">应用 2</span>
+      <strong>用户中心</strong>
+    </div>
+    <span id="status" class="status-badge">未连接</span>
+  </div>
+  
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value" id="msgSent">0</div>
+      <div class="stat-label">发送消息</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value" id="msgReceived">0</div>
+      <div class="stat-label">接收消息</div>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">点对点通讯（请求-响应）</div>
+    <div class="btn-group">
+      <button id="btnPing" class="btn-primary" disabled>Ping 父页面</button>
+      <button id="btnSendToParent" class="btn-success" disabled>发送消息给父页面</button>
+      <button id="btnSendToCart" class="btn-info" disabled>发送给购物车</button>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">广播通讯（单向无响应）</div>
+    <div class="btn-group">
+      <button id="btnBroadcastAll" class="btn-warning" disabled>广播给所有</button>
+      <button id="btnBroadcastToCart" class="btn-warning" disabled>广播给购物车</button>
+    </div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">消息日志</div>
+    <div id="logContainer" class="log-container"></div>
+  </div>
+
+  <script>
+    const { IframeChannel, ReturnCode } = PostMessageChannel;
+    
+    const APP_TYPE = 'user';
+    const APP_NAME = '用户中心';
+    
+    // DOM elements
+    const statusEl = document.getElementById('status');
+    const logContainer = document.getElementById('logContainer');
+    const msgSentEl = document.getElementById('msgSent');
+    const msgReceivedEl = document.getElementById('msgReceived');
+    const btnPing = document.getElementById('btnPing');
+    const btnSendToParent = document.getElementById('btnSendToParent');
+    const btnSendToCart = document.getElementById('btnSendToCart');
+    const btnBroadcastAll = document.getElementById('btnBroadcastAll');
+    const btnBroadcastToCart = document.getElementById('btnBroadcastToCart');
+    
+    let channel = null;
+    let stats = { sent: 0, received: 0 };
+    
+    function log(message, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const item = document.createElement('div');
+      item.className = 'log-item';
+      item.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-${type}">${message}</span>`;
+      logContainer.appendChild(item);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    function updateStats() {
+      msgSentEl.textContent = stats.sent;
+      msgReceivedEl.textContent = stats.received;
+    }
+    
+    function setButtonsEnabled(enabled) {
+      btnPing.disabled = !enabled;
+      btnSendToParent.disabled = !enabled;
+      btnSendToCart.disabled = !enabled;
+      btnBroadcastAll.disabled = !enabled;
+      btnBroadcastToCart.disabled = !enabled;
+    }
+    
+    // 获取父页面 origin
+    const parentOrigin = window.location.origin;
+    
+    // 创建 channel 连接父页面
+    channel = new IframeChannel(parentOrigin, {
+      timeout: 5000
+    });
+    
+    // 监听 ready 事件
+    channel.on('ready', () => {
+      statusEl.className = 'status-badge connected';
+      statusEl.textContent = '已连接';
+      setButtonsEnabled(true);
+      log('连接成功！', 'info');
+      
+      // 向父页面注册
+      channel.publish('__register__', {
+        appType: APP_TYPE,
+        appName: APP_NAME
+      }).then(res => {
+        if (res.ret === ReturnCode.Success) {
+          log(`注册成功，共 ${res.data.totalClients} 个客户端`, 'info');
+        }
+      });
+    });
+    
+    // ========== 注册消息处理器 ==========
+    
+    // 点对点消息
+    channel.subscribe('directMessage', ({ data }) => {
+      stats.received++;
+      updateStats();
+      log(`💬 [点对点] 来自 ${data.from}: ${data.message}`, 'receive');
+      return { received: true, receivedAt: Date.now() };
+    });
+    
+    // 广播消息 - 全局广播
+    channel.onBroadcast('globalBroadcast', ({ data }) => {
+      stats.received++;
+      updateStats();
+      log(`📢 [全局广播] 来自 ${data.from}: ${data.message}`, 'broadcast');
+    });
+    
+    // 广播消息 - 类型广播
+    channel.onBroadcast('typedBroadcast', ({ data }) => {
+      stats.received++;
+      updateStats();
+      log(`🎯 [类型广播] 来自 ${data.from}: ${data.message}`, 'broadcast');
+    });
+    
+    // Ping
+    channel.subscribe('ping', ({ data }) => {
+      return { pong: true, from: APP_NAME, timestamp: Date.now() };
+    });
+    
+    // ========== 按钮事件 ==========
+    
+    btnPing.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      log('📤 发送 Ping...', 'send');
+      
+      const start = Date.now();
+      const response = await channel.publish('ping');
+      const latency = Date.now() - start;
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        log(`📥 Pong! 延迟: ${latency}ms`, 'receive');
+      } else {
+        log(`❌ Ping 失败: ${response.msg}`, 'error');
+      }
+    });
+    
+    btnSendToParent.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      const message = `用户中心消息 @ ${new Date().toLocaleTimeString()}`;
+      log(`📤 发送给父页面: ${message}`, 'send');
+      
+      const response = await channel.publish('directMessage', {
+        message: message,
+        from: APP_NAME
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        log(`📥 父页面已收到`, 'receive');
+      }
+    });
+    
+    btnSendToCart.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      const message = `来自用户中心的消息 @ ${new Date().toLocaleTimeString()}`;
+      log(`📤 发送给购物车: ${message}`, 'send');
+      
+      // 通过父页面转发给指定类型的子页面
+      const response = await channel.publish('forwardToType', {
+        targetType: 'cart',
+        cmdname: 'directMessage',
+        data: { message: message, from: APP_NAME }
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        stats.received++;
+        updateStats();
+        log(`📥 已转发给 ${response.data.sentCount} 个购物车`, 'receive');
+      }
+    });
+    
+    btnBroadcastAll.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      const message = `用户中心广播 @ ${new Date().toLocaleTimeString()}`;
+      log(`📤 广播给所有: ${message}`, 'send');
+      
+      const response = await channel.publish('broadcastToAll', {
+        eventName: 'globalBroadcast',
+        data: { message: message, from: APP_NAME }
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        log(`✅ 已广播给 ${response.data.sentCount} 个客户端`, 'info');
+      }
+    });
+    
+    btnBroadcastToCart.addEventListener('click', async () => {
+      stats.sent++;
+      updateStats();
+      const message = `会员等级更新通知 @ ${new Date().toLocaleTimeString()}`;
+      log(`📤 广播给购物车: ${message}`, 'send');
+      
+      const response = await channel.publish('broadcastToType', {
+        targetType: 'cart',
+        eventName: 'typedBroadcast',
+        data: { message: message, from: APP_NAME, targetType: 'cart' }
+      });
+      
+      if (response.ret === ReturnCode.Success) {
+        log(`✅ 已广播给 ${response.data.sentCount} 个购物车`, 'info');
+      }
+    });
+  </script>
+</body>
+</html>
