@@ -369,6 +369,12 @@ export interface HubOptions {
 }
 
 /**
+ * Connection state for ServiceWorkerChannel.
+ * @enum {string}
+ */
+export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
+
+/**
  * Extended options for ServiceWorkerChannel.createFromPage().
  * @interface PageChannelOptions
  */
@@ -392,6 +398,70 @@ export interface PageChannelOptions {
    * @example '/app/' or './'
    */
   swScope?: string
+
+  // ============================================================================
+  // Heartbeat Options - Connection Health Monitoring
+  // ============================================================================
+
+  /**
+   * Interval in milliseconds between heartbeat checks.
+   * Set to 0 to disable heartbeat.
+   * @default 30000 (30 seconds)
+   */
+  heartbeatInterval?: number
+  /**
+   * Timeout in milliseconds for each heartbeat ping.
+   * @default 5000 (5 seconds)
+   */
+  heartbeatTimeout?: number
+  /**
+   * Maximum number of consecutive missed heartbeats before considering disconnected.
+   * @default 3
+   */
+  maxMissedHeartbeats?: number
+  /**
+   * Enable smart heartbeat - skip heartbeat if there was recent successful communication.
+   * This reduces overhead when there's active message exchange.
+   * @default true
+   */
+  smartHeartbeat?: boolean
+
+  // ============================================================================
+  // Reconnection Options
+  // ============================================================================
+
+  /**
+   * Maximum number of reconnection attempts.
+   * Set to 0 to disable auto-reconnect (will still emit disconnected event).
+   * @default 5
+   */
+  maxReconnectAttempts?: number
+  /**
+   * Base delay in milliseconds for reconnection attempts.
+   * Uses exponential backoff: delay = baseDelay * 2^attempt (capped at maxReconnectDelay).
+   * @default 1000 (1 second)
+   */
+  reconnectBaseDelay?: number
+  /**
+   * Maximum delay in milliseconds between reconnection attempts.
+   * @default 30000 (30 seconds)
+   */
+  maxReconnectDelay?: number
+
+  // ============================================================================
+  // Handshake Options
+  // ============================================================================
+
+  /**
+   * Timeout in milliseconds for initial handshake.
+   * @default 10000 (10 seconds)
+   */
+  handshakeTimeout?: number
+  /**
+   * Number of handshake retry attempts before failing.
+   * @default 3
+   */
+  handshakeRetries?: number
 }
 
 /**

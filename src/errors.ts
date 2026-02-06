@@ -23,7 +23,15 @@ export enum ErrorCode {
   /** Invalid message format */
   InvalidMessage = 'INVALID_MESSAGE',
   /** Origin validation failed */
-  OriginMismatch = 'ORIGIN_MISMATCH'
+  OriginMismatch = 'ORIGIN_MISMATCH',
+  /** Heartbeat detection failed */
+  HeartbeatFailed = 'HEARTBEAT_FAILED',
+  /** Reconnection attempts exhausted */
+  ReconnectFailed = 'RECONNECT_FAILED',
+  /** Handshake failed after retries */
+  HandshakeFailed = 'HANDSHAKE_FAILED',
+  /** Service Worker not available */
+  ServiceWorkerUnavailable = 'SERVICE_WORKER_UNAVAILABLE'
 }
 
 /**

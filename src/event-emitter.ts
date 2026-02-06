@@ -78,6 +78,53 @@ export interface ChannelEventMap {
    * Emitted when a broadcast message is received.
    */
   'broadcast:received': { cmdname: string; data?: Record<string, any> }
+
+  // ============================================================================
+  // Connection Lifecycle Events (ServiceWorkerChannel)
+  // ============================================================================
+
+  /**
+   * Emitted when connection is successfully established.
+   * This includes initial connection and successful reconnection.
+   */
+  connected: { isReconnect: boolean }
+
+  /**
+   * Emitted when connection is lost.
+   * Contains the reason for disconnection.
+   */
+  disconnected: { 
+    reason: 'heartbeat_failed' | 'sw_terminated' | 'controller_changed' | 'manual' | 'error'
+    error?: Error
+  }
+
+  /**
+   * Emitted when attempting to reconnect.
+   * Fired for each reconnection attempt.
+   */
+  reconnecting: { 
+    attempt: number
+    maxAttempts: number
+    nextRetryIn: number
+  }
+
+  /**
+   * Emitted when all reconnection attempts have failed.
+   */
+  'reconnect:failed': { 
+    attempts: number
+    lastError?: Error
+  }
+
+  /**
+   * Emitted on each heartbeat result.
+   * Useful for monitoring connection health.
+   */
+  heartbeat: {
+    success: boolean
+    latencyMs?: number
+    missedCount: number
+  }
 }
 
 /**

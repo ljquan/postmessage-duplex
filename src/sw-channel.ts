@@ -1,7 +1,8 @@
 import BaseChannel, { ChannelOption, generateUniqueId } from './base-channel'
-import { Methods, ReturnCode, ClientMeta, HubOptions, PageChannelOptions, GlobalSubscribeHandler } from './interface'
+import { Methods, ReturnCode, ClientMeta, HubOptions, PageChannelOptions, GlobalSubscribeHandler, ConnectionState } from './interface'
 import { cloneMessage } from './utils'
 import { ServiceWorkerHub, HubChannel } from './sw-hub'
+import { ChannelError, ErrorCode } from './errors'
 
 /**
  * Configuration options for ServiceWorkerChannel.
@@ -121,6 +122,37 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
 
   /** ServiceWorkerContainer reference (page side only) */
   private readonly swContainer?: ServiceWorkerContainer
+
+  // ============================================================================
+  // Connection State Management (page side only)
+  // ============================================================================
+
+  /** Current connection state */
+  private _connectionState: ConnectionState = 'connecting'
+
+  /** Last successful message timestamp (for smart heartbeat) */
+  private lastSuccessfulMessageTime = 0
+
+  /** Heartbeat interval timer ID */
+  private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null
+
+  /** Count of consecutive missed heartbeats */
+  private missedHeartbeatCount = 0
+
+  /** Whether currently attempting to reconnect */
+  private isReconnecting = false
+
+  /** Current reconnection attempt number */
+  private reconnectAttempt = 0
+
+  /** Options for heartbeat and reconnection */
+  private connectionOptions: PageChannelOptions = {}
+
+  /** Bound handler for controller change events */
+  private boundControllerChangeHandler: (() => void) | null = null
+
+  /** Bound handler for SW state change events */
+  private boundStateChangeHandler: (() => void) | null = null
 
   // ============================================================================
   // Static Global Message Router (for SW side)
@@ -930,6 +962,369 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
     }
   }
 
+  // ============================================================================
+  // Connection State API (page side only)
+  // ============================================================================
+
+  /**
+   * Gets the current connection state.
+   * @returns The current connection state
+   */
+  get connectionState(): ConnectionState {
+    return this._connectionState
+  }
+
+  /**
+   * Checks if the channel is currently connected.
+   * @returns true if connected
+   */
+  get isConnected(): boolean {
+    return this._connectionState === 'connected'
+  }
+
+  /**
+   * Updates the last successful message time.
+   * Called internally when a message is successfully sent or received.
+   * @internal
+   */
+  private updateLastMessageTime(): void {
+    this.lastSuccessfulMessageTime = Date.now()
+  }
+
+  /**
+   * Sets the connection state and emits appropriate events.
+   * @param newState - The new connection state
+   * @param eventData - Optional event data for disconnected/reconnecting events
+   * @internal
+   */
+  private setConnectionState(
+    newState: ConnectionState,
+    eventData?: {
+      reason?: 'heartbeat_failed' | 'sw_terminated' | 'controller_changed' | 'manual' | 'error'
+      error?: Error
+      attempt?: number
+      nextRetryIn?: number
+    }
+  ): void {
+    if (this._connectionState === newState) return
+    
+    const oldState = this._connectionState
+    this._connectionState = newState
+    
+    this.log('log', `Connection state: ${oldState} -> ${newState}`)
+    
+    switch (newState) {
+      case 'connected':
+        this.missedHeartbeatCount = 0
+        this.reconnectAttempt = 0
+        this.emit('connected', { isReconnect: oldState === 'reconnecting' })
+        break
+      case 'disconnected':
+        this.emit('disconnected', {
+          reason: eventData?.reason || 'error',
+          error: eventData?.error
+        })
+        break
+      case 'reconnecting':
+        this.emit('reconnecting', {
+          attempt: eventData?.attempt || this.reconnectAttempt,
+          maxAttempts: this.connectionOptions.maxReconnectAttempts || 5,
+          nextRetryIn: eventData?.nextRetryIn || 0
+        })
+        break
+    }
+  }
+
+  /**
+   * Starts the heartbeat monitoring.
+   * @internal
+   */
+  private startHeartbeat(): void {
+    if (this.isWorkerSide) return
+    
+    const interval = this.connectionOptions.heartbeatInterval ?? 30000
+    if (interval <= 0) return // Heartbeat disabled
+    
+    this.stopHeartbeat() // Clear any existing heartbeat
+    
+    this.heartbeatIntervalId = setInterval(() => {
+      this.performHeartbeat()
+    }, interval)
+    
+    this.log('log', `Heartbeat started with interval ${interval}ms`)
+  }
+
+  /**
+   * Stops the heartbeat monitoring.
+   * @internal
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatIntervalId) {
+      clearInterval(this.heartbeatIntervalId)
+      this.heartbeatIntervalId = null
+    }
+  }
+
+  /**
+   * Performs a single heartbeat check.
+   * @internal
+   */
+  private async performHeartbeat(): Promise<void> {
+    // Smart heartbeat: skip if there was recent communication
+    const smartHeartbeat = this.connectionOptions.smartHeartbeat !== false
+    const interval = this.connectionOptions.heartbeatInterval ?? 30000
+    
+    if (smartHeartbeat && this.lastSuccessfulMessageTime > 0) {
+      const timeSinceLastMessage = Date.now() - this.lastSuccessfulMessageTime
+      if (timeSinceLastMessage < interval) {
+        // Recent communication proves connection is alive
+        this.missedHeartbeatCount = 0
+        this.emit('heartbeat', { success: true, missedCount: 0 })
+        return
+      }
+    }
+    
+    const timeout = this.connectionOptions.heartbeatTimeout ?? 5000
+    const startTime = Date.now()
+    
+    try {
+      const response = await this.publish('__ping__', {}, { timeout })
+      
+      if (response.ret === ReturnCode.Success) {
+        const latencyMs = Date.now() - startTime
+        this.missedHeartbeatCount = 0
+        this.updateLastMessageTime()
+        this.emit('heartbeat', { success: true, latencyMs, missedCount: 0 })
+        
+        // If we were in reconnecting state and got a response, we're connected
+        if (this._connectionState === 'reconnecting') {
+          this.setConnectionState('connected')
+        }
+      } else {
+        this.handleHeartbeatFailure()
+      }
+    } catch (e) {
+      this.handleHeartbeatFailure(e instanceof Error ? e : undefined)
+    }
+  }
+
+  /**
+   * Handles a failed heartbeat.
+   * @internal
+   */
+  private handleHeartbeatFailure(error?: Error): void {
+    this.missedHeartbeatCount++
+    const maxMissed = this.connectionOptions.maxMissedHeartbeats ?? 3
+    
+    this.emit('heartbeat', {
+      success: false,
+      missedCount: this.missedHeartbeatCount
+    })
+    
+    this.log('warn', `Heartbeat failed (${this.missedHeartbeatCount}/${maxMissed})`)
+    
+    if (this.missedHeartbeatCount >= maxMissed) {
+      this.log('error', 'Connection lost: heartbeat threshold exceeded')
+      this.setConnectionState('disconnected', {
+        reason: 'heartbeat_failed',
+        error: error || new ChannelError(
+          'Heartbeat detection failed',
+          ErrorCode.HeartbeatFailed,
+          { missedCount: this.missedHeartbeatCount }
+        )
+      })
+      
+      // Trigger auto-reconnect if enabled
+      if (this.connectionOptions.autoReconnect !== false) {
+        this.attemptReconnect()
+      }
+    }
+  }
+
+  /**
+   * Attempts to reconnect to the Service Worker.
+   * Uses exponential backoff between attempts.
+   * @internal
+   */
+  private async attemptReconnect(): Promise<void> {
+    if (this.isReconnecting || this.isDestroyed) return
+    
+    const maxAttempts = this.connectionOptions.maxReconnectAttempts ?? 5
+    if (maxAttempts <= 0) return // Auto-reconnect disabled
+    
+    this.isReconnecting = true
+    this.reconnectAttempt = 0
+    
+    const baseDelay = this.connectionOptions.reconnectBaseDelay ?? 1000
+    const maxDelay = this.connectionOptions.maxReconnectDelay ?? 30000
+    
+    while (this.reconnectAttempt < maxAttempts && !this.isDestroyed) {
+      this.reconnectAttempt++
+      
+      const delay = Math.min(baseDelay * Math.pow(2, this.reconnectAttempt - 1), maxDelay)
+      
+      this.setConnectionState('reconnecting', {
+        attempt: this.reconnectAttempt,
+        nextRetryIn: delay
+      })
+      
+      // Wait before attempting
+      await this.delay(delay)
+      
+      if (this.isDestroyed) break
+      
+      try {
+        await this.refreshWorker()
+        
+        // Wait for ready state
+        if (!this.isReady) {
+          await this.waitForReady(this.connectionOptions.handshakeTimeout ?? 10000)
+        }
+        
+        // Re-register if Hub options are present
+        if (this.connectionOptions.appType || this.connectionOptions.appName) {
+          await this.publish('__register__', {
+            appType: this.connectionOptions.appType,
+            appName: this.connectionOptions.appName
+          })
+        }
+        
+        // Connection restored
+        this.missedHeartbeatCount = 0
+        this.setConnectionState('connected')
+        this.updateLastMessageTime()
+        this.isReconnecting = false
+        
+        this.log('log', 'Reconnection successful')
+        return
+        
+      } catch (e) {
+        this.log('warn', `Reconnection attempt ${this.reconnectAttempt} failed:`, e)
+      }
+    }
+    
+    // All attempts failed
+    this.isReconnecting = false
+    this.emit('reconnect:failed', {
+      attempts: this.reconnectAttempt,
+      lastError: new ChannelError(
+        'All reconnection attempts failed',
+        ErrorCode.ReconnectFailed,
+        { attempts: this.reconnectAttempt }
+      )
+    })
+  }
+
+  /**
+   * Waits for the channel to become ready.
+   * @param timeout - Maximum time to wait in milliseconds
+   * @returns Promise that resolves when ready
+   * @internal
+   */
+  private waitForReady(timeout: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.isReady) {
+        resolve()
+        return
+      }
+      
+      const timer = setTimeout(() => {
+        this.off('ready', onReady)
+        reject(new ChannelError('Handshake timeout', ErrorCode.HandshakeFailed))
+      }, timeout)
+      
+      const onReady = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      
+      this.once('ready', onReady)
+    })
+  }
+
+  /**
+   * Utility method to delay execution.
+   * @param ms - Milliseconds to delay
+   * @internal
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Sets up Service Worker lifecycle event listeners.
+   * @internal
+   */
+  private setupSwLifecycleListeners(): void {
+    if (this.isWorkerSide || typeof navigator === 'undefined') return
+    
+    // Listen for controller changes (SW updated/replaced)
+    this.boundControllerChangeHandler = () => {
+      this.log('log', 'Service Worker controller changed')
+      this.handleControllerChange()
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', this.boundControllerChangeHandler)
+    
+    // Listen for SW state changes
+    if (this.worker) {
+      this.boundStateChangeHandler = () => {
+        this.handleStateChange(this.worker?.state)
+      }
+      this.worker.addEventListener('statechange', this.boundStateChangeHandler)
+    }
+  }
+
+  /**
+   * Removes Service Worker lifecycle event listeners.
+   * @internal
+   */
+  private removeSwLifecycleListeners(): void {
+    if (this.boundControllerChangeHandler) {
+      navigator.serviceWorker?.removeEventListener('controllerchange', this.boundControllerChangeHandler)
+      this.boundControllerChangeHandler = null
+    }
+    
+    if (this.boundStateChangeHandler && this.worker) {
+      this.worker.removeEventListener('statechange', this.boundStateChangeHandler)
+      this.boundStateChangeHandler = null
+    }
+  }
+
+  /**
+   * Handles controller change events.
+   * @internal
+   */
+  private handleControllerChange(): void {
+    if (this._connectionState === 'connected') {
+      this.setConnectionState('disconnected', { reason: 'controller_changed' })
+    }
+    
+    // Trigger reconnection
+    if (this.connectionOptions.autoReconnect !== false) {
+      this.attemptReconnect()
+    }
+  }
+
+  /**
+   * Handles SW state change events.
+   * @param state - The new SW state
+   * @internal
+   */
+  private handleStateChange(state?: string): void {
+    this.log('log', 'Service Worker state changed:', state)
+    
+    if (state === 'redundant') {
+      // SW has been replaced or terminated
+      if (this._connectionState === 'connected') {
+        this.setConnectionState('disconnected', { reason: 'sw_terminated' })
+      }
+      
+      if (this.connectionOptions.autoReconnect !== false) {
+        this.attemptReconnect()
+      }
+    }
+  }
+
   /**
    * Creates a ServiceWorkerChannel on the page side, waiting for
    * the Service Worker to be ready.
@@ -995,6 +1390,9 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
     }
 
     const channel = new ServiceWorkerChannel<T>(worker, opt)
+    
+    // Store connection options for reconnection
+    channel.connectionOptions = opt || {}
 
     // Hub integration: auto-register if appType or appName provided
     const hasHubOptions = opt?.appType || opt?.appName
@@ -1012,6 +1410,7 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
           appName: opt?.appName
         })
         isRegistered = true
+        channel.updateLastMessageTime()
       } catch (e) {
         console.warn('[ServiceWorkerChannel] Auto-registration failed:', e)
       } finally {
@@ -1019,12 +1418,36 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
       }
     }
 
+    // Setup connection state management
+    const setupConnectionManagement = () => {
+      // Mark as connected
+      channel.setConnectionState('connected')
+      channel.updateLastMessageTime()
+      
+      // Start heartbeat monitoring
+      channel.startHeartbeat()
+      
+      // Setup SW lifecycle listeners
+      channel.setupSwLifecycleListeners()
+    }
+
     if (hasHubOptions) {
       // Register after channel is ready
       if (channel.isReady) {
         registerClient()
+        setupConnectionManagement()
       } else {
-        channel.once('ready', registerClient)
+        channel.once('ready', () => {
+          registerClient()
+          setupConnectionManagement()
+        })
+      }
+    } else {
+      // No hub options, but still setup connection management
+      if (channel.isReady) {
+        setupConnectionManagement()
+      } else {
+        channel.once('ready', setupConnectionManagement)
       }
     }
 
@@ -1035,6 +1458,9 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
         // Emit event for users to handle reconnection
         channel.emit('sw-activated', { version: data?.version })
         
+        // Mark as disconnected first (SW was replaced)
+        channel.setConnectionState('disconnected', { reason: 'controller_changed' })
+        
         // Auto re-register if we have Hub options
         if (hasHubOptions) {
           // Refresh worker reference to point to new SW
@@ -1044,8 +1470,19 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
           isRegistered = false
           await registerClient()
         }
+        
+        // Restore connected state
+        channel.setConnectionState('connected')
+        channel.updateLastMessageTime()
       })
     }
+
+    // Track successful message responses for smart heartbeat
+    channel.on('message:received', ({ isResponse }) => {
+      if (isResponse) {
+        channel.updateLastMessageTime()
+      }
+    })
 
     return channel
   }
@@ -1091,5 +1528,24 @@ export default class ServiceWorkerChannel<TMethods extends Methods = Methods> ex
       throw new Error('Invalid message event: no client source')
     }
     return ServiceWorkerChannel.createFromWorker<T>(source.id, opt)
+  }
+
+  /**
+   * Destroys the channel and releases all resources.
+   * Stops heartbeat monitoring and removes lifecycle listeners.
+   * @override
+   */
+  destroy(): void {
+    // Stop heartbeat and cleanup connection management
+    this.stopHeartbeat()
+    this.removeSwLifecycleListeners()
+    
+    // Set state to disconnected if was connected
+    if (this._connectionState === 'connected' || this._connectionState === 'reconnecting') {
+      this._connectionState = 'disconnected'
+    }
+    
+    // Call parent destroy
+    super.destroy()
   }
 }

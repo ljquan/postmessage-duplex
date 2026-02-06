@@ -60,13 +60,32 @@ channel.destroy()
 const channel = await ServiceWorkerChannel.createFromPage()
 const response = await channel.publish('fetchData', { url: '/api' })
 
-// PAGE SIDE - With Hub integration (recommended for multi-client)
+// PAGE SIDE - With Hub integration and connection stability (recommended)
 const channel = await ServiceWorkerChannel.createFromPage({
-  swUrl: '/sw.js',       // Auto-register SW
-  appType: 'cart',       // For broadcastToType
+  swUrl: '/sw.js',           // Auto-register SW
+  appType: 'cart',           // For broadcastToType
   appName: 'Shopping Cart',
-  autoReconnect: true    // Auto-reconnect on SW update
+  autoReconnect: true,       // Auto-reconnect on SW update (default: true)
+  heartbeatInterval: 30000,  // Connection health check interval (default: 30s)
+  maxMissedHeartbeats: 3,    // Disconnect after N failures (default: 3)
 })
+
+// CONNECTION STATE MONITORING (important for stability)
+channel.on('connected', ({ isReconnect }) => {
+  console.log(isReconnect ? 'Reconnected' : 'Connected')
+})
+
+channel.on('disconnected', ({ reason }) => {
+  console.log('Disconnected:', reason)  // 'heartbeat_failed' | 'sw_terminated' | 'controller_changed'
+})
+
+channel.on('reconnecting', ({ attempt, maxAttempts }) => {
+  console.log(`Reconnecting (${attempt}/${maxAttempts})...`)
+})
+
+// Check connection state
+console.log(channel.connectionState)  // 'connecting' | 'connected' | 'disconnected' | 'reconnecting'
+console.log(channel.isConnected)      // boolean
 
 // SERVICE WORKER SIDE - Using Hub API (recommended)
 importScripts('./postmessage-duplex.umd.js')
@@ -108,10 +127,22 @@ switch (response.ret) {
 ### Configuration Options
 
 ```typescript
+// IframeChannel options
 const channel = new IframeChannel(target, {
   timeout: 5000,           // ms, default: 5000
   maxMessageSize: 1048576, // bytes, default: 1MB
   rateLimit: 100,          // msgs/sec, default: 100
+})
+
+// ServiceWorkerChannel options (includes connection stability)
+const channel = await ServiceWorkerChannel.createFromPage({
+  timeout: 5000,              // Request timeout (default: 5000ms)
+  heartbeatInterval: 30000,   // Health check interval (default: 30s, 0 to disable)
+  heartbeatTimeout: 5000,     // Heartbeat timeout (default: 5s)
+  maxMissedHeartbeats: 3,     // Failures before disconnect (default: 3)
+  smartHeartbeat: true,       // Skip heartbeat if recent message (default: true)
+  autoReconnect: true,        // Auto-reconnect on disconnect (default: true)
+  maxReconnectAttempts: 5,    // Max reconnection attempts (default: 5)
 })
 ```
 
@@ -133,40 +164,19 @@ const response = await channel.call('getUser', { id: 123 })
 ### Broadcast (One-way Communication)
 
 ```typescript
-// SEND BROADCAST (fire-and-forget, no response)
-channel.broadcast('notification', { type: 'update', message: 'Data changed' })
-
-// RECEIVE BROADCAST
-channel.onBroadcast('notification', ({ data }) => {
-  console.log('Received:', data.message)
-  // No return value - broadcasts are one-way
-})
-
-// REMOVE BROADCAST HANDLER
-channel.offBroadcast('notification')
+channel.broadcast('notification', { message: 'Data changed' })  // Fire-and-forget
+channel.onBroadcast('notification', ({ data }) => console.log(data.message))  // No return
+channel.offBroadcast('notification')  // Remove handler
 ```
 
-**Key differences from publish/subscribe:**
-- `broadcast()` does not return a Promise (fire-and-forget)
-- `onBroadcast()` handler does not return a value
-- No timeout handling for broadcasts
-- Ideal for notifications, events, and one-way data pushes
+**Key differences:** No Promise, no return value, no timeout - ideal for notifications.
 
 ### Debugging
 
 ```typescript
-// Enable in development only
 import { enableDebugger } from 'postmessage-duplex'
-
-if (process.env.NODE_ENV === 'development') {
-  enableDebugger()
-}
-
-// Console commands available after enabling:
-// __POSTMESSAGE_DUPLEX__.debug.help()
-// __POSTMESSAGE_DUPLEX__.debug.getChannels()
-// __POSTMESSAGE_DUPLEX__.debug.getHistory()
-// __POSTMESSAGE_DUPLEX__.debug.enableLiveLog(true)
+if (process.env.NODE_ENV === 'development') enableDebugger()
+// Then use: __POSTMESSAGE_DUPLEX__.debug.help() in console
 ```
 
 ## Code Generation Rules
@@ -257,68 +267,34 @@ ServiceWorkerChannel.subscribeGlobal('cmd', handler)  // Won't work!
 ServiceWorkerChannel.setupHub({ version: '1.0.0' })
 ServiceWorkerChannel.subscribeGlobal('cmd', handler)
 
-// ❌ WRONG: Expecting immediate broadcast after SW update
-// Clients need time to re-register after SW update
+// ❌ WRONG: Ignoring connection state in critical operations
+await channel.publish('payment', data)  // May fail silently if disconnected
 
-// ✅ CORRECT: Use autoReconnect and handle timing
-const channel = await ServiceWorkerChannel.createFromPage({
-  autoReconnect: true  // Handles SW updates automatically
+// ✅ CORRECT: Check connection state before critical operations
+if (channel.isConnected) {
+  await channel.publish('payment', data)
+} else {
+  // Queue for retry or show error to user
+}
+
+// ❌ WRONG: Not listening for disconnection events
+const channel = await ServiceWorkerChannel.createFromPage()
+
+// ✅ CORRECT: Handle connection lifecycle for robust apps
+const channel = await ServiceWorkerChannel.createFromPage()
+channel.on('disconnected', ({ reason }) => {
+  showReconnectingUI()
+})
+channel.on('connected', () => {
+  hideReconnectingUI()
 })
 ```
 
 ## Testing Guidelines
 
-### Service Worker Testing
-
-```typescript
-// ❌ WRONG: Expecting individual message listeners with global routing
-const channel = ServiceWorkerChannel.createFromWorker('client-id')
-expect(mockAddEventListener).toHaveBeenCalledWith('message', ...)  // Fails!
-
-// ✅ CORRECT: Global routing shares a single listener
-// Individual channels register in the global router instead
-expect(ServiceWorkerChannel.hasChannel('client-id')).toBe(true)
-
-// ✅ CORRECT: Disable global routing to test individual listeners
-ServiceWorkerChannel.disableGlobalRouting()
-const channel = ServiceWorkerChannel.createFromWorker('client-id')
-expect(mockAddEventListener).toHaveBeenCalledWith('message', ...)  // Works!
-channel.destroy()
-ServiceWorkerChannel.enableGlobalRouting()  // Restore default
-```
-
-### Mock Setup for SW Tests
-
-```typescript
-// Mock the Service Worker global scope
-let mockSelf: any
-let mockAddEventListener: jest.Mock
-let mockRemoveEventListener: jest.Mock
-
-beforeEach(() => {
-  mockAddEventListener = jest.fn()
-  mockRemoveEventListener = jest.fn()
-  
-  mockSelf = {
-    addEventListener: mockAddEventListener,
-    removeEventListener: mockRemoveEventListener,
-    clients: {
-      get: jest.fn().mockResolvedValue(null),
-      matchAll: jest.fn().mockResolvedValue([])
-    }
-  }
-  
-  ;(globalThis as any).self = mockSelf
-})
-
-afterEach(() => {
-  // Restore original self if needed
-})
-```
-
 ### Key Testing Notes
 
-1. **Global routing is ON by default** - `useGlobalRouting = true`
-2. **Static state persists between tests** - Reset with `ServiceWorkerChannel.disableGlobalRouting()` then `enableGlobalRouting()`
-3. **Hub tests don't need full SW mock** - Focus on internal logic with mocked HubChannel interfaces
-4. **Use Jest fake timers for timeout tests** - `jest.useFakeTimers()` / `jest.useRealTimers()`
+1. **Global routing is ON by default** - Use `ServiceWorkerChannel.disableGlobalRouting()` to test individual listeners
+2. **Static state persists between tests** - Reset with `disableGlobalRouting()` then `enableGlobalRouting()`
+3. **Use Jest fake timers for timeout tests** - `jest.useFakeTimers()` / `jest.useRealTimers()`
+4. **Mock SW global scope** - Set `(globalThis as any).self = mockSelf` with `clients.get()` and `clients.matchAll()`
